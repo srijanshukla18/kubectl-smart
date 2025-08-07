@@ -24,7 +24,7 @@ Installation automatically:
 - Globally installs kubectl-smart to your PATH  
 - Makes `kubectl-smart` command available everywhere
 
-## 📁 Repository Structure (CLEANED UP)
+## 📁 Repository Structure
 
 ```
 kubectl-smart/                          # 🧹 Clean main directory
@@ -50,20 +50,6 @@ kubectl-smart/                          # 🧹 Clean main directory
 ├── examples.md                        # 📚 Comprehensive usage examples
 └── IMPLEMENTATION_SUMMARY.md          # 📊 Technical implementation summary
 ```
-
-## 🆚 What Changed?
-
-### ❌ **OLD** (Archived in `archive/old-implementation/`)
-- **Single file**: 1500+ line monolithic `kubectl-smart` script
-- **No dependencies**: Used only Python stdlib (limited functionality)
-- **argparse CLI**: Basic command-line interface
-- **Commands**: `describe`, `deps`, `events`, `analyze` (didn't match spec)
-
-### ✅ **NEW** (Current main implementation)
-- **Modular package**: 11 focused modules with clean separation
-- **Modern dependencies**: typer, python-igraph, statsmodels, rich, pydantic
-- **Typer CLI**: Professional command-line interface with help
-- **Commands**: `diag`, `graph`, `top` (exactly as specified)
 
 ## 🎯 The Three Commands
 

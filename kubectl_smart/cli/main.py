@@ -138,6 +138,11 @@ def diag(
     if json:
         format = OutputFormat.JSON
     
+    # Suppress warnings for JSON output to keep output clean
+    if format == OutputFormat.JSON:
+        import logging
+        logging.getLogger('kubectl_smart').setLevel(logging.ERROR)
+    
     # Lazy import models
     from ..models import ResourceKind, SubjectCtx
     
@@ -173,12 +178,18 @@ def diag(
             typer.echo(result.output)
         
         # Set exit code based on issues found
-        typer.Exit(result.exit_code)
+        import os
+        if os.getenv('KUBECTL_SMART_DEBUG'):
+            typer.echo(f"Debug: result.exit_code = {result.exit_code}", err=True)
+        raise typer.Exit(result.exit_code)
         
     except Exception as e:
+        import os
+        if os.getenv('KUBECTL_SMART_DEBUG'):
+            typer.echo(f"Debug: Exception caught: {e}", err=True)
         if not quiet:
             typer.echo(f"Error: {e}", err=True)
-        typer.Exit(2)
+        raise typer.Exit(2)
 
 
 @app.command()
@@ -211,6 +222,11 @@ def graph(
     # Handle JSON flag
     if json:
         format = OutputFormat.JSON
+    
+    # Suppress warnings for JSON output to keep output clean
+    if format == OutputFormat.JSON:
+        import logging
+        logging.getLogger('kubectl_smart').setLevel(logging.ERROR)
     
     # Default to downstream if neither specified
     if not upstream and not downstream:
@@ -253,7 +269,7 @@ def graph(
         
     except Exception as e:
         typer.echo(f"Error: {e}", err=True)
-        typer.Exit(1)
+        raise typer.Exit(1)
 
 
 @app.command()
@@ -284,6 +300,11 @@ def top(
     if json:
         format = OutputFormat.JSON
     
+    # Suppress warnings for JSON output to keep output clean
+    if format == OutputFormat.JSON:
+        import logging
+        logging.getLogger('kubectl_smart').setLevel(logging.ERROR)
+    
     # Lazy import models
     from ..models import ResourceKind, SubjectCtx
     
@@ -308,7 +329,7 @@ def top(
         
     except Exception as e:
         typer.echo(f"Error: {e}", err=True)
-        typer.Exit(1)
+        raise typer.Exit(1)
 
 
 # Legacy commands for backward compatibility (hidden from help)
@@ -322,7 +343,7 @@ def describe(
     """Legacy describe command - use 'diag' instead"""
     typer.echo("⚠️  'describe' is deprecated. Use 'kubectl-smart diag' instead.", err=True)
     typer.echo(f"   Try: kubectl-smart diag {resource_type} {name}", err=True)
-    typer.Exit(1)
+    raise typer.Exit(1)
 
 
 @app.command(hidden=True) 
@@ -334,7 +355,7 @@ def deps(
     """Legacy deps command - use 'graph' instead"""
     typer.echo("⚠️  'deps' is deprecated. Use 'kubectl-smart graph' instead.", err=True)
     typer.echo(f"   Try: kubectl-smart graph {resource_type} {name}", err=True)
-    typer.Exit(1)
+    raise typer.Exit(1)
 
 
 @app.command(hidden=True)
@@ -344,7 +365,7 @@ def events(
     """Legacy events command - use 'diag' or 'top' instead"""
     typer.echo("⚠️  'events' is deprecated. Use 'kubectl-smart diag' or 'top' instead.", err=True)
     typer.echo("   Try: kubectl-smart diag pod <name> or kubectl-smart top <namespace>", err=True)
-    typer.Exit(1)
+    raise typer.Exit(1)
 
 
 if __name__ == "__main__":

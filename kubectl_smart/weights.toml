@@ -28,7 +28,6 @@
 
 # Network issues
 "DNSConfigForming" = 50.0
-"NetworkNotReady" = 60.0
 "CNINotReady" = 70.0
 
 # Image issues  

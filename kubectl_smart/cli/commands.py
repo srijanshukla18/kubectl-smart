@@ -58,7 +58,7 @@ class BaseCommand:
         collectors = []
         for name in collector_names:
             try:
-                if name == 'get':
+                if name in ['get', 'describe']:
                     collector = collector_registry.create(name, resource_type=subject.kind.value.lower())
                 else:
                     collector = collector_registry.create(name)

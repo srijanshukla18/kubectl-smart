@@ -6,6 +6,7 @@ producing the exact output format described in the product specification.
 """
 
 import json
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from rich.console import Console
@@ -22,6 +23,15 @@ from ..models import (
     ResourceRecord,
     TopResult,
 )
+
+
+class DateTimeEncoder(json.JSONEncoder):
+    """Custom JSON encoder that handles datetime objects"""
+    
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        return super().default(obj)
 
 
 class TerminalRenderer:
@@ -290,7 +300,7 @@ class JSONRenderer:
             }
         }
         
-        return json.dumps(data, indent=2, ensure_ascii=False)
+        return json.dumps(data, indent=2, ensure_ascii=False, cls=DateTimeEncoder)
     
     def render_graph(self, result: GraphResult) -> str:
         """Render graph result as JSON"""
@@ -310,7 +320,7 @@ class JSONRenderer:
             "timestamp": result.timestamp.isoformat(),
         }
         
-        return json.dumps(data, indent=2, ensure_ascii=False)
+        return json.dumps(data, indent=2, ensure_ascii=False, cls=DateTimeEncoder)
     
     def render_top(self, result: TopResult) -> str:
         """Render top result as JSON"""
@@ -333,7 +343,7 @@ class JSONRenderer:
             }
         }
         
-        return json.dumps(data, indent=2, ensure_ascii=False)
+        return json.dumps(data, indent=2, ensure_ascii=False, cls=DateTimeEncoder)
     
     def render_error(self, error_msg: str, details: Optional[str] = None) -> str:
         """Render error as JSON"""
@@ -344,7 +354,7 @@ class JSONRenderer:
             "timestamp": DiagnosisResult.timestamp.default_factory().isoformat(),
         }
         
-        return json.dumps(data, indent=2, ensure_ascii=False)
+        return json.dumps(data, indent=2, ensure_ascii=False, cls=DateTimeEncoder)
     
     def render_rbac_error(self, missing_permissions: List[str]) -> str:
         """Render RBAC error as JSON"""
@@ -360,4 +370,4 @@ class JSONRenderer:
             "timestamp": DiagnosisResult.timestamp.default_factory().isoformat(),
         }
         
-        return json.dumps(data, indent=2, ensure_ascii=False)
+        return json.dumps(data, indent=2, ensure_ascii=False, cls=DateTimeEncoder)
