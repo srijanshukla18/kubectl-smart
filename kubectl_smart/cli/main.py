@@ -59,10 +59,7 @@ class ResourceType(str, Enum):
     DAEMONSET = "ds"
 
 
-class OutputFormat(str, Enum):
-    """Output format options"""
-    TERMINAL = "terminal"
-    JSON = "json"
+
 
 
 def version_callback(value: bool):
@@ -76,7 +73,7 @@ def version_callback(value: bool):
 def main(
     version: Annotated[Optional[bool], typer.Option("--version", callback=version_callback, help="Show version and exit")] = None,
     debug: Annotated[bool, typer.Option("--debug", help="Enable debug logging")] = False,
-    quiet: Annotated[bool, typer.Option("--quiet", "-q", help="Suppress non-essential output")] = False,
+    
 ):
     """
     kubectl-smart: Intelligent kubectl plugin for Kubernetes debugging
@@ -100,10 +97,7 @@ def main(
         import os
         os.environ['KUBECTL_SMART_DEBUG'] = '1'
     
-    if quiet:
-        # Suppress all but critical output
-        import logging
-        logging.basicConfig(level=logging.CRITICAL)
+    
 
 
 @app.command()
@@ -112,9 +106,7 @@ def diag(
     name: Annotated[str, typer.Argument(help="Resource name")],
     namespace: Annotated[Optional[str], typer.Option("--namespace", "-n", help="Namespace")] = None,
     context: Annotated[Optional[str], typer.Option("--context", help="kubectl context")] = None,
-    format: Annotated[OutputFormat, typer.Option("--format", "-o", help="Output format")] = OutputFormat.TERMINAL,
-    json: Annotated[bool, typer.Option("--json", help="Output JSON (same as --format=json)")] = False,
-    quiet: Annotated[bool, typer.Option("--quiet", "-q", help="Print nothing but still return exit code")] = False,
+    
 ):
     """
     🎯 Root-cause analysis of a single workload
@@ -134,14 +126,7 @@ def diag(
       kubectl-smart diag deploy my-app -n production
       kubectl-smart diag sts database --format=json
     """
-    # Handle JSON flag
-    if json:
-        format = OutputFormat.JSON
-    
-    # Suppress warnings for JSON output to keep output clean
-    if format == OutputFormat.JSON:
-        import logging
-        logging.getLogger('kubectl_smart').setLevel(logging.ERROR)
+
     
     # Lazy import models
     from ..models import ResourceKind, SubjectCtx
@@ -173,9 +158,8 @@ def diag(
     command = DiagCommand()
     
     try:
-        result = asyncio.run(command.execute(subject, format.value, quiet))
-        if not quiet:
-            typer.echo(result.output)
+        result = asyncio.run(command.execute(subject))
+        typer.echo(result.output)
         
         # Set exit code based on issues found
         import os
@@ -183,12 +167,13 @@ def diag(
             typer.echo(f"Debug: result.exit_code = {result.exit_code}", err=True)
         raise typer.Exit(result.exit_code)
         
+    except typer.Exit:
+        raise  # Re-raise typer.Exit to ensure correct exit code
     except Exception as e:
         import os
         if os.getenv('KUBECTL_SMART_DEBUG'):
             typer.echo(f"Debug: Exception caught: {e}", err=True)
-        if not quiet:
-            typer.echo(f"Error: {e}", err=True)
+        typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(2)
 
 
@@ -200,8 +185,6 @@ def graph(
     context: Annotated[Optional[str], typer.Option("--context", help="kubectl context")] = None,
     upstream: Annotated[bool, typer.Option("--upstream", help="Show upstream dependencies")] = False,
     downstream: Annotated[bool, typer.Option("--downstream", help="Show downstream dependencies")] = False,
-    format: Annotated[OutputFormat, typer.Option("--format", "-o", help="Output format")] = OutputFormat.TERMINAL,
-    json: Annotated[bool, typer.Option("--json", help="Output JSON (same as --format=json)")] = False,
 ):
     """
     🔗 Dependency visualization (ASCII tree)
@@ -219,14 +202,7 @@ def graph(
       kubectl-smart graph deploy my-app --downstream
       kubectl-smart graph sts database -n prod --format=json
     """
-    # Handle JSON flag
-    if json:
-        format = OutputFormat.JSON
-    
-    # Suppress warnings for JSON output to keep output clean
-    if format == OutputFormat.JSON:
-        import logging
-        logging.getLogger('kubectl_smart').setLevel(logging.ERROR)
+
     
     # Default to downstream if neither specified
     if not upstream and not downstream:
@@ -264,12 +240,17 @@ def graph(
     command = GraphCommand()
     
     try:
-        result = asyncio.run(command.execute(subject, direction, format.value))
+        result = asyncio.run(command.execute(subject, direction))
         typer.echo(result.output)
-        
+        raise typer.Exit(result.exit_code)
+    except typer.Exit:
+        raise
     except Exception as e:
+        import os
+        if os.getenv('KUBECTL_SMART_DEBUG'):
+            typer.echo(f"Debug: Exception caught: {e}", err=True)
         typer.echo(f"Error: {e}", err=True)
-        raise typer.Exit(1)
+        raise typer.Exit(2)
 
 
 @app.command()
@@ -277,8 +258,6 @@ def top(
     namespace: Annotated[str, typer.Argument(help="Namespace to analyze")],
     context: Annotated[Optional[str], typer.Option("--context", help="kubectl context")] = None,
     horizon: Annotated[int, typer.Option("--horizon", "-h", help="Forecast horizon in hours", min=1, max=168)] = 48,
-    format: Annotated[OutputFormat, typer.Option("--format", "-o", help="Output format")] = OutputFormat.TERMINAL,
-    json: Annotated[bool, typer.Option("--json", help="Output JSON (same as --format=json)")] = False,
 ):
     """
     📈 Predictive capacity & certificate outlook
@@ -296,14 +275,7 @@ def top(
       kubectl-smart top kube-system --horizon=24  
       kubectl-smart top staging --format=json
     """
-    # Handle JSON flag
-    if json:
-        format = OutputFormat.JSON
-    
-    # Suppress warnings for JSON output to keep output clean
-    if format == OutputFormat.JSON:
-        import logging
-        logging.getLogger('kubectl_smart').setLevel(logging.ERROR)
+
     
     # Lazy import models
     from ..models import ResourceKind, SubjectCtx
@@ -324,12 +296,17 @@ def top(
     command = TopCommand(forecast_horizon_hours=horizon)
     
     try:
-        result = asyncio.run(command.execute(subject, format.value))
+        result = asyncio.run(command.execute(subject))
         typer.echo(result.output)
-        
+        raise typer.Exit(result.exit_code)
+    except typer.Exit:
+        raise
     except Exception as e:
+        import os
+        if os.getenv('KUBECTL_SMART_DEBUG'):
+            typer.echo(f"Debug: Exception caught: {e}", err=True)
         typer.echo(f"Error: {e}", err=True)
-        raise typer.Exit(1)
+        raise typer.Exit(2)
 
 
 # Legacy commands for backward compatibility (hidden from help)
@@ -338,7 +315,7 @@ def describe(
     resource_type: str,
     name: str,
     namespace: Optional[str] = typer.Option(None, "--namespace", "-n"),
-    format: str = typer.Option("terminal", "--format", "-o"),
+    
 ):
     """Legacy describe command - use 'diag' instead"""
     typer.echo("⚠️  'describe' is deprecated. Use 'kubectl-smart diag' instead.", err=True)

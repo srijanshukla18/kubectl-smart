@@ -25,7 +25,7 @@ from ..models import (
     TopResult,
 )
 from ..parsers.base import registry as parser_registry
-from ..renderers.terminal import JSONRenderer, TerminalRenderer
+from ..renderers.terminal import TerminalRenderer
 from ..scoring.engine import ScoringEngine
 
 logger = structlog.get_logger(__name__)
@@ -58,7 +58,9 @@ class BaseCommand:
         collectors = []
         for name in collector_names:
             try:
-                if name in ['get', 'describe']:
+                if name == 'describe':
+                    collector = collector_registry.create(name, resource_type=subject.kind.value.lower())
+                elif name == 'get':
                     collector = collector_registry.create(name, resource_type=subject.kind.value.lower())
                 else:
                     collector = collector_registry.create(name)
@@ -90,12 +92,7 @@ class BaseCommand:
         
         return all_resources
     
-    def _get_renderer(self, format_type: str) -> TerminalRenderer | JSONRenderer:
-        """Get appropriate renderer for format"""
-        if format_type == "json":
-            return JSONRenderer()
-        else:
-            return TerminalRenderer(colors_enabled=self.config.colors_enabled)
+    
 
 
 class DiagCommand(BaseCommand):
@@ -107,7 +104,7 @@ class DiagCommand(BaseCommand):
     - Exit codes: 0 = no issues ≥50; 1 = warnings; 2 = critical
     """
     
-    async def execute(self, subject: SubjectCtx, format_type: str = "terminal", quiet: bool = False) -> CommandResult:
+    async def execute(self, subject: SubjectCtx) -> CommandResult:
         """Execute diagnosis command"""
         start_time = time.time()
         
@@ -131,23 +128,11 @@ class DiagCommand(BaseCommand):
             if not target_resource:
                 # Resource not found
                 analysis_duration = time.time() - start_time
-                result = DiagnosisResult(
-                    subject=subject,
-                    resource=None,
-                    issues=[],
-                    root_cause=None,
-                    contributing_factors=[],
-                    suggested_actions=["Verify resource name and namespace", "Check if resource exists: kubectl get {subject.kind.value.lower()}"],
-                    analysis_duration=analysis_duration,
-                )
+                renderer = TerminalRenderer(colors_enabled=self.config.colors_enabled)
+                output = renderer.render_error(f"Resource {subject.full_name} not found")
                 
-                renderer = self._get_renderer(format_type)
-                if isinstance(renderer, JSONRenderer):
-                    output = renderer.render_diagnosis(result)
-                else:
-                    output = renderer.render_error(f"Resource {subject.full_name} not found")
-                
-                return CommandResult(output=output, exit_code=1, analysis_duration=analysis_duration)
+                # All errors return exit_code=2
+                return CommandResult(output=output, exit_code=2, analysis_duration=analysis_duration)
             
             # Extract events related to this resource
             events = [r for r in all_resources if r.kind.value == "Event"]
@@ -182,35 +167,31 @@ class DiagCommand(BaseCommand):
             )
             
             # Render output
-            renderer = self._get_renderer(format_type)
-            if isinstance(renderer, JSONRenderer):
-                output = renderer.render_diagnosis(result)
-            else:
-                output = renderer.render_diagnosis(result)
+            renderer = TerminalRenderer(colors_enabled=self.config.colors_enabled)
+            output = renderer.render_diagnosis(result)
             
-            # Determine exit code
+            # Determine exit code (0 for success, 2 for any issues)
             exit_code = 0
-            if result.critical_issues:
-                exit_code = 2  # Critical issues found
-            elif result.warning_issues:
-                exit_code = 1  # Warning issues found
+            if result.critical_issues or result.warning_issues:
+                exit_code = 2  # Any issues found, return 2
             
+            logger.debug(f"DiagCommand: critical_issues={result.critical_issues}, warning_issues={result.warning_issues}")
             return CommandResult(
                 output=output, 
                 exit_code=exit_code, 
                 analysis_duration=analysis_duration
             )
             
-        except Exception as e:
+        except BaseException as e:
+            if isinstance(e, SystemExit):
+                raise  # Re-raise SystemExit to ensure proper exit code propagation
             analysis_duration = time.time() - start_time
             logger.error("Diagnosis command failed", error=str(e))
             
-            renderer = self._get_renderer(format_type)
-            if isinstance(renderer, JSONRenderer):
-                output = renderer.render_error(str(e))
-            else:
-                output = renderer.render_error(f"Diagnosis failed: {e}")
+            renderer = TerminalRenderer(colors_enabled=self.config.colors_enabled)
+            output = renderer.render_error(f"Diagnosis failed: {e}")
             
+            logger.debug(f"DiagCommand returning exit_code=2 due to exception: {e}")
             return CommandResult(output=output, exit_code=2, analysis_duration=analysis_duration)
     
     def _generate_suggested_actions(self, resource: ResourceRecord, root_cause, contributing_factors) -> List[str]:
@@ -252,7 +233,7 @@ class GraphCommand(BaseCommand):
     - Provides ASCII tree visualization with health indicators
     """
     
-    async def execute(self, subject: SubjectCtx, direction: str = "downstream", format_type: str = "terminal") -> CommandResult:
+    async def execute(self, subject: SubjectCtx, direction: str = "downstream") -> CommandResult:
         """Execute graph command"""
         start_time = time.time()
         
@@ -278,9 +259,11 @@ class GraphCommand(BaseCommand):
             
             if not target_uid:
                 analysis_duration = time.time() - start_time
-                renderer = self._get_renderer(format_type)
+                renderer = TerminalRenderer(colors_enabled=self.config.colors_enabled)
                 output = renderer.render_error(f"Resource {subject.full_name} not found in graph")
-                return CommandResult(output=output, exit_code=1, analysis_duration=analysis_duration)
+                
+                # All errors return exit_code=2
+                return CommandResult(output=output, exit_code=2, analysis_duration=analysis_duration)
             
             # Generate ASCII graph
             ascii_graph = self.graph_builder.to_ascii(target_uid, direction, max_depth=3)
@@ -313,25 +296,22 @@ class GraphCommand(BaseCommand):
             )
             
             # Render output
-            renderer = self._get_renderer(format_type)
-            if isinstance(renderer, JSONRenderer):
-                output = renderer.render_graph(result)
-            else:
-                output = renderer.render_graph(result)
+            renderer = TerminalRenderer(colors_enabled=self.config.colors_enabled)
+            output = renderer.render_graph(result)
             
             return CommandResult(output=output, exit_code=0, analysis_duration=analysis_duration)
             
-        except Exception as e:
+        except BaseException as e:
+            if isinstance(e, SystemExit):
+                raise  # Re-raise SystemExit to ensure proper exit code propagation
             analysis_duration = time.time() - start_time
             logger.error("Graph command failed", error=str(e))
             
-            renderer = self._get_renderer(format_type)
-            if isinstance(renderer, JSONRenderer):
-                output = renderer.render_error(str(e))
-            else:
-                output = renderer.render_error(f"Graph analysis failed: {e}")
+            renderer = TerminalRenderer(colors_enabled=self.config.colors_enabled)
+            output = renderer.render_error(f"Graph analysis failed: {e}")
                 
-            return CommandResult(output=output, exit_code=1, analysis_duration=analysis_duration)
+            logger.debug(f"GraphCommand returning exit_code=2 due to exception: {e}")
+            return CommandResult(output=output, exit_code=2, analysis_duration=analysis_duration)
 
 
 class TopCommand(BaseCommand):
@@ -349,7 +329,7 @@ class TopCommand(BaseCommand):
             forecast_horizon_hours=forecast_horizon_hours
         )
     
-    async def execute(self, subject: SubjectCtx, format_type: str = "terminal") -> CommandResult:
+    async def execute(self, subject: SubjectCtx) -> CommandResult:
         """Execute top command"""
         start_time = time.time()
         
@@ -389,11 +369,8 @@ class TopCommand(BaseCommand):
             )
             
             # Render output
-            renderer = self._get_renderer(format_type)
-            if isinstance(renderer, JSONRenderer):
-                output = renderer.render_top(result)
-            else:
-                output = renderer.render_top(result)
+            renderer = TerminalRenderer(colors_enabled=self.config.colors_enabled)
+            output = renderer.render_top(result)
             
             return CommandResult(output=output, exit_code=0, analysis_duration=analysis_duration)
             
@@ -401,10 +378,8 @@ class TopCommand(BaseCommand):
             analysis_duration = time.time() - start_time
             logger.error("Top command failed", error=str(e))
             
-            renderer = self._get_renderer(format_type)
-            if isinstance(renderer, JSONRenderer):
-                output = renderer.render_error(str(e))
-            else:
-                output = renderer.render_error(f"Predictive analysis failed: {e}")
+            renderer = TerminalRenderer(colors_enabled=self.config.colors_enabled)
+            output = renderer.render_error(f"Predictive analysis failed: {e}")
                 
-            return CommandResult(output=output, exit_code=1, analysis_duration=analysis_duration)
+            # All errors return exit_code=2
+            return CommandResult(output=output, exit_code=2, analysis_duration=analysis_duration)

@@ -5,8 +5,8 @@ This module implements the ANSI renderer as specified in the technical requireme
 producing the exact output format described in the product specification.
 """
 
-import json
-from datetime import datetime
+
+
 from typing import Any, Dict, List, Optional
 
 from rich.console import Console
@@ -25,13 +25,7 @@ from ..models import (
 )
 
 
-class DateTimeEncoder(json.JSONEncoder):
-    """Custom JSON encoder that handles datetime objects"""
-    
-    def default(self, obj):
-        if isinstance(obj, datetime):
-            return obj.isoformat()
-        return super().default(obj)
+
 
 
 class TerminalRenderer:
@@ -269,105 +263,3 @@ class TerminalRenderer:
         return style_map.get(status, 'white')
 
 
-class JSONRenderer:
-    """JSON renderer for structured output and automation
-    
-    As specified in the technical requirements:
-    - Outputs stable schema documented in docs/schema.json
-    - Used for automation and API integration
-    """
-    
-    def render_diagnosis(self, result: DiagnosisResult) -> str:
-        """Render diagnosis result as JSON"""
-        data = {
-            "type": "diagnosis",
-            "subject": {
-                "kind": result.subject.kind.value,
-                "name": result.subject.name,
-                "namespace": result.subject.namespace,
-                "full_name": result.subject.full_name,
-            },
-            "resource": result.resource.dict() if result.resource else None,
-            "root_cause": result.root_cause.dict() if result.root_cause else None,
-            "contributing_factors": [f.dict() for f in result.contributing_factors],
-            "suggested_actions": result.suggested_actions,
-            "analysis_duration": result.analysis_duration,
-            "timestamp": result.timestamp.isoformat(),
-            "summary": {
-                "total_issues": len(result.issues),
-                "critical_issues": len(result.critical_issues),
-                "warning_issues": len(result.warning_issues),
-            }
-        }
-        
-        return json.dumps(data, indent=2, ensure_ascii=False, cls=DateTimeEncoder)
-    
-    def render_graph(self, result: GraphResult) -> str:
-        """Render graph result as JSON"""
-        data = {
-            "type": "graph",
-            "subject": {
-                "kind": result.subject.kind.value,
-                "name": result.subject.name,
-                "namespace": result.subject.namespace,
-                "full_name": result.subject.full_name,
-            },
-            "nodes": [node.dict() for node in result.nodes],
-            "edges": result.edges,
-            "upstream_count": result.upstream_count,
-            "downstream_count": result.downstream_count,
-            "analysis_duration": result.analysis_duration,
-            "timestamp": result.timestamp.isoformat(),
-        }
-        
-        return json.dumps(data, indent=2, ensure_ascii=False, cls=DateTimeEncoder)
-    
-    def render_top(self, result: TopResult) -> str:
-        """Render top result as JSON"""
-        data = {
-            "type": "top",
-            "subject": {
-                "kind": result.subject.kind.value,
-                "name": result.subject.name,
-                "namespace": result.subject.namespace,
-                "full_name": result.subject.full_name,
-            },
-            "forecast_horizon_hours": result.forecast_horizon_hours,
-            "capacity_warnings": result.capacity_warnings,
-            "certificate_warnings": result.certificate_warnings,
-            "analysis_duration": result.analysis_duration,
-            "timestamp": result.timestamp.isoformat(),
-            "summary": {
-                "total_capacity_warnings": len(result.capacity_warnings),
-                "total_certificate_warnings": len(result.certificate_warnings),
-            }
-        }
-        
-        return json.dumps(data, indent=2, ensure_ascii=False, cls=DateTimeEncoder)
-    
-    def render_error(self, error_msg: str, details: Optional[str] = None) -> str:
-        """Render error as JSON"""
-        data = {
-            "type": "error",
-            "error": error_msg,
-            "details": details,
-            "timestamp": DiagnosisResult.timestamp.default_factory().isoformat(),
-        }
-        
-        return json.dumps(data, indent=2, ensure_ascii=False, cls=DateTimeEncoder)
-    
-    def render_rbac_error(self, missing_permissions: List[str]) -> str:
-        """Render RBAC error as JSON"""
-        data = {
-            "type": "rbac_error", 
-            "error": "RBAC permission denied",
-            "missing_permissions": missing_permissions,
-            "suggested_actions": [
-                "Request additional permissions from cluster admin",
-                "Run with limited scope",
-                "Check current permissions with: kubectl auth can-i --list"
-            ],
-            "timestamp": DiagnosisResult.timestamp.default_factory().isoformat(),
-        }
-        
-        return json.dumps(data, indent=2, ensure_ascii=False, cls=DateTimeEncoder)

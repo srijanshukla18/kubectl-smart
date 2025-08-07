@@ -212,9 +212,7 @@ class DiagnosisResult(BaseModel):
         """Get all warning issues"""
         return [issue for issue in self.issues if issue.severity == IssueSeverity.WARNING]
     
-    def to_json(self) -> str:
-        """Export to JSON for API/automation use"""
-        return self.json(indent=2, ensure_ascii=False)
+    
 
 
 class GraphResult(BaseModel):
