@@ -46,13 +46,13 @@ This specification is the *single source of truth* for engineers implementing **
 
 | Component           | Primary Responsibilities                                                              |
 | ------------------- | ------------------------------------------------------------------------------------- |
-| **CLI Front‑End**   | argument parsing (Typer), shell completion, global flags (`--json`, `--quiet`).       |
+| **CLI Front‑End**   | argument parsing (Typer), shell completion.       |
 | **Collector Layer** | Spawn subprocesses to run kubectl commands; stream stdout/stderr; time‑box each call. |
 | **Parser Layer**    | Convert raw JSON/YAML/log lines into typed Python objects (pydantic models).          |
 | **Graph Builder**   | Build in‑memory directed graph (igraph) of resources & relations.                     |
 | **Signal Scorer**   | Rank potential issues via heuristic weights; seriousness 0‑100.                       |
 | **Forecaster**      | Holt‑Winters on time‑series for disk & memory; cert date math.                        |
-| **Renderer**        | Produce ANSI or JSON output; respects `--quiet`.                                      |
+| **Renderer**        | Produce ANSI output.                                      |
 
 All components live in the top‑level Python package `kubectl_smart`.  Cross‑layer imports are prohibited except via declared service interfaces.
 
@@ -66,8 +66,7 @@ All components live in the top‑level Python package `kubectl_smart`.  Cross‑
 * Global options:
 
   * `--context`, `--namespace` forward to kubectl.
-  * `--json` forces JSON renderer; exit code 0 if **no critical** scores ≥ 90.
-  * `--quiet` prints nothing but still returns exit code based on status.
+  * Exit codes reflect issue severity (diag 0/2; graph/top 0).
 
 ### 4.2 Collector API (`kubectl_smart.collectors.base`)
 

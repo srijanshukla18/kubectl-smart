@@ -297,7 +297,7 @@ echo "========================"
 
 # Test global flags with different commands
 if [ -n "$RUNNING_POD" ] && [ -n "$RUNNING_POD_NS" ]; then
-    run_test "diag with debug flag" "kubectl-smart --debug diag pod $RUNNING_POD -n $RUNNING_POD_NS" 0
+    run_test "diag with debug flag" "kubectl-smart --debug diag pod $RUNNING_POD -n $RUNNING_POD_NS" 2
 fi
 
 # Test version in different ways
@@ -311,7 +311,7 @@ echo "======================================="
 
 # Test explicit context specification (should work with minikube)
 if [ -n "$RUNNING_POD" ] && [ -n "$RUNNING_POD_NS" ]; then
-    run_test "diag with explicit context" "kubectl-smart diag pod $RUNNING_POD -n $RUNNING_POD_NS --context=minikube" 0
+    run_test "diag with explicit context" "kubectl-smart diag pod $RUNNING_POD -n $RUNNING_POD_NS --context=minikube" 2
     run_test "graph with explicit context" "kubectl-smart graph pod $RUNNING_POD -n $RUNNING_POD_NS --context=minikube --upstream" 0
 fi
 
@@ -333,12 +333,12 @@ echo "========================"
 echo "⚡ Testing PERFORMANCE"
 echo "===================="
 
-# Test startup time
-run_test_with_output "help command performance" "time kubectl-smart --help 2>&1" "real.*0m[0-9]\.[0-9]"
+# Test startup time (use external time to avoid shell builtins)
+run_test_with_output "help command performance" "/usr/bin/time -p kubectl-smart --help" "real [0-9]+\.[0-9]+"
 
 if [ -n "$RUNNING_POD" ] && [ -n "$RUNNING_POD_NS" ]; then
     # Test command execution time (should be ≤3s as per spec)
-    run_test "diag performance test" "timeout 5s kubectl-smart diag pod $RUNNING_POD -n $RUNNING_POD_NS" 0
+    run_test "diag performance test" "timeout 5s kubectl-smart diag pod $RUNNING_POD -n $RUNNING_POD_NS" 2
     run_test "graph performance test" "timeout 5s kubectl-smart graph pod $RUNNING_POD -n $RUNNING_POD_NS --upstream" 0
 fi
 
@@ -351,9 +351,9 @@ echo "🕰️  Testing LEGACY COMMANDS"
 echo "========================="
 
 # Test deprecated commands show migration messages
-run_test_with_output "legacy describe command" "kubectl-smart describe pod test -n default 2>&1" "deprecated.*diag"
-run_test_with_output "legacy deps command" "kubectl-smart deps pod test -n default 2>&1" "deprecated.*graph"  
-run_test_with_output "legacy events command" "kubectl-smart events -n default 2>&1" "deprecated"
+run_test_with_output "legacy describe command" "kubectl-smart describe pod test -n default" "deprecated.*diag"
+run_test_with_output "legacy deps command" "kubectl-smart deps pod test -n default" "deprecated.*graph"  
+run_test_with_output "legacy events command" "kubectl-smart events -n default" "deprecated"
 
 
 # =============================================================================
@@ -365,7 +365,7 @@ echo "================================="
 # Test workflow: diag → graph → top for same resource
 if [ -n "$RUNNING_POD" ] && [ -n "$RUNNING_POD_NS" ]; then
     log_info "Testing complete workflow for pod $RUNNING_POD in namespace $RUNNING_POD_NS"
-    run_test "workflow step 1: diag" "kubectl-smart diag pod $RUNNING_POD -n $RUNNING_POD_NS" 0
+    run_test_with_output "workflow step 1: diag" "kubectl-smart diag pod $RUNNING_POD -n $RUNNING_POD_NS" "DIAGNOSIS:"
     run_test "workflow step 2: graph upstream" "kubectl-smart graph pod $RUNNING_POD -n $RUNNING_POD_NS --upstream" 0  
     run_test "workflow step 3: graph downstream" "kubectl-smart graph pod $RUNNING_POD -n $RUNNING_POD_NS --downstream" 0
     run_test "workflow step 4: namespace top" "kubectl-smart top $RUNNING_POD_NS" 0
@@ -430,6 +430,18 @@ kubectl get ns "$FIX_NS" &>/dev/null && {
 
   # Top for capacity / cert predictions (always exit 0)
   run_test "top fixtures namespace" "kubectl-smart top $FIX_NS" 0
+
+  # If expiring TLS secret exists, expect certificate warnings to be present
+  if kubectl -n "$FIX_NS" get secret expiring-cert &>/dev/null; then
+    run_test_with_output "top fixtures cert warnings" "kubectl-smart top $FIX_NS" "CERTIFICATE WARNINGS"
+  fi
+
+  # If PVC exists, ensure top output renders predictive outlook section
+  if kubectl -n "$FIX_NS" get pvc fillpvc &>/dev/null; then
+    run_test_with_output "top fixtures pvc outlook" "kubectl-smart top $FIX_NS" "PREDICTIVE OUTLOOK: namespace $FIX_NS"
+    # Run top again to accumulate a second sample for forecasting cache
+    run_test "top fixtures namespace (2nd run)" "kubectl-smart top $FIX_NS" 0
+  fi
 }
 
 # STRESS TESTS

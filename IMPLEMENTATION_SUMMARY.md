@@ -26,13 +26,13 @@ I have successfully implemented the complete **kubectl-smart** tool according to
 - ✅ **Results Models**: DiagnosisResult, GraphResult, TopResult
 
 #### **Component Architecture (Exactly as Specified)**
-- ✅ **CLI Front-End**: Typer-based with global flags (`--json`, `--quiet`)
+- ✅ **CLI Front-End**: Typer-based
 - ✅ **Collector Layer**: Async kubectl command wrappers with timeouts
 - ✅ **Parser Layer**: YAML/JSON to pydantic models conversion
 - ✅ **Graph Builder**: python-igraph implementation with UID vertices
 - ✅ **Signal Scorer**: Heuristic weights system with `weights.toml`
 - ✅ **Forecaster**: statsmodels Holt-Winters with linear fallback
-- ✅ **Renderer**: Rich ANSI and stable JSON schema output
+- ✅ **Renderer**: Rich ANSI terminal output
 
 #### **The Three Commands (Bare-bones Power Trio)**
 
@@ -106,15 +106,8 @@ chmod +x kubectl-smart-new
 
 ### **Advanced Features**
 ```bash
-# JSON output for automation
-./kubectl-smart-new diag pod my-pod --format=json
-./kubectl-smart-new top production --json
-
 # Debug mode
 ./kubectl-smart-new --debug diag pod my-pod
-
-# Quiet mode (exit codes only)
-./kubectl-smart-new --quiet diag pod my-pod
 ```
 
 ## 📁 **Project Structure**
@@ -187,7 +180,6 @@ kubectl-smart/
 - **Actionable kubectl commands** generated automatically
 
 ### **For Platform Teams**
-- **JSON API** for automation and dashboard integration
 - **Configurable scoring** via weights.toml
 - **Extensible architecture** for custom collectors/renderers
 - **Performance metrics** and structured logging

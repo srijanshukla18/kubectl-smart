@@ -56,7 +56,7 @@ kubectl-smart/                          # 🧹 Clean main directory
 ### 1. `diag` - Root-cause Analysis
 ```bash
 kubectl-smart diag pod failing-pod
-kubectl-smart diag deploy my-app -n production --format=json
+kubectl-smart diag deploy my-app -n production
 ```
 **Purpose**: One-shot diagnosis that surfaces root cause and contributing factors
 
@@ -74,6 +74,12 @@ kubectl-smart top kube-system --horizon=24
 ```
 **Purpose**: 48h forecast of capacity issues and certificate expiry
 
+Data sources and behavior:
+- CPU/Memory: metrics-server (`kubectl top`) snapshot; forecasts improve across runs using a small local cache.
+- PVC Disk usage: kubelet Prometheus metrics (kubelet_volume_stats_* via API proxy). If unavailable, output notes that signals may be limited.
+- Certificate expiry: parses Secret `tls.crt` via X.509; warns when ≤ 14 days.
+- Read-only; no cluster writes. If a source is unavailable, `top` succeeds but shows no warnings and prints a note.
+
 ## 🔧 Architecture
 
 The new implementation follows the exact technical specification:
@@ -81,7 +87,7 @@ The new implementation follows the exact technical specification:
 - **CLI Front-End** → **Collectors** → **Parsers** → **Graph Builder** → **Scorers** → **Renderers**
 - **Async performance**: <3s on 2k-resource clusters
 - **Intelligent scoring**: Configurable heuristic weights
-- **Professional output**: Rich terminal formatting + JSON API
+- **Professional output**: Rich terminal formatting
 
 ## 🧪 Testing
 

@@ -95,78 +95,33 @@ kubectl-smart diag ds my-daemonset -n monitoring
 kubectl-smart diag daemonset my-daemonset -n monitoring
 ```
 
-### Output Formats
+### Output
 
 ```bash
 # Default terminal output (colorized, human-readable)
 kubectl-smart diag pod my-pod
-
-# JSON output for automation
-kubectl-smart diag pod my-pod --json
-kubectl-smart diag pod my-pod --format=json
-kubectl-smart diag pod my-pod -o json
-
-# Silent mode (only exit codes, no output)
-kubectl-smart diag pod my-pod --quiet
-kubectl-smart diag pod my-pod -q
-```
-
-**JSON Output Sample:**
-```json
-{
-  "subject": "Pod/default/my-pod",
-  "status": "Running", 
-  "root_cause": {
-    "issue": "HighMemoryUsage",
-    "score": 78.0,
-    "description": "Memory usage at 89% of limit"
-  },
-  "contributing_factors": [
-    {
-      "issue": "CPUThrottling", 
-      "score": 65.0,
-      "description": "CPU being throttled due to limits"
-    }
-  ],
-  "suggested_actions": [
-    "Consider increasing memory limits",
-    "Review resource requests and limits",
-    "Check for memory leaks in application"
-  ],
-  "exit_code": 1,
-  "analysis_duration": "1.45s"
-}
 ```
 
 ### Exit Codes & Automation
 
-kubectl-smart diag returns meaningful exit codes for automation:
+kubectl-smart diag returns automation-friendly exit codes:
 
 ```bash
-# Exit code 0: No critical issues (score < 50)
-kubectl-smart diag pod healthy-pod -q
+# Exit code 0: No issues detected
+kubectl-smart diag pod healthy-pod >/dev/null
 echo $?  # 0
 
-# Exit code 1: Warning issues (score 50-89)  
-kubectl-smart diag pod slow-pod -q
-echo $?  # 1
-
-# Exit code 2: Critical issues (score ≥ 90)
-kubectl-smart diag pod failing-pod -q  
+# Exit code 2: Issues detected (warning or critical)
+kubectl-smart diag pod failing-pod >/dev/null
 echo $?  # 2
 
 # Use in scripts
-if kubectl-smart diag pod $POD_NAME -q; then
-    echo "Pod is healthy"
-else
-    exit_code=$?
-    if [ $exit_code -eq 1 ]; then
-        echo "Pod has warnings"
-        # Send alert
-    elif [ $exit_code -eq 2 ]; then  
-        echo "Pod is critically broken"
-        # Page on-call
-    fi
+kubectl-smart diag pod "$POD_NAME" -n "$NAMESPACE" >/dev/null
+exit_code=$?
+if [ $exit_code -ne 0 ]; then
+  echo "Issues detected in $POD_NAME (exit=$exit_code)"
+  # Optional: print details for humans
+  kubectl-smart diag pod "$POD_NAME" -n "$NAMESPACE"
 fi
 ```
 
@@ -258,17 +213,11 @@ kubectl-smart graph rs web-rs --downstream
 kubectl-smart graph ds log-collector --upstream
 ```
 
-### Output Formats
+### Output
 
 ```bash
 # Human-readable ASCII tree (default)
 kubectl-smart graph pod my-pod --upstream
-
-# JSON for automation/tooling
-kubectl-smart graph pod my-pod --upstream --json
-
-# Use JSON with jq for processing
-kubectl-smart graph pod my-pod --upstream --json | jq '.dependencies[]'
 ```
 
 ### Real-World Graph Scenarios
@@ -358,6 +307,8 @@ Forecast horizon: 48h
   4. Schedule internal-ca-cert renewal
 
 ⏱️  Analysis completed in 1.1s
+
+[Note] Some signals (PVC disk usage, certificate expiry) need kubelet metrics and valid tls.crt. If unavailable, `top` succeeds but shows limited output.
 ```
 
 ### Different Namespaces
@@ -395,17 +346,11 @@ kubectl-smart top data --horizon=72   # 3 days
 kubectl-smart top data --horizon=168  # 7 days (max)
 ```
 
-### Output Formats
+### Output
 
 ```bash
 # Human-readable forecast (default)
 kubectl-smart top production
-
-# JSON for automation
-kubectl-smart top production --json
-
-# Use with monitoring systems
-kubectl-smart top production --json | jq '.warnings[] | select(.severity == "critical")'
 ```
 
 ### Real-World TOP Scenarios
@@ -424,19 +369,16 @@ kubectl-smart top api --horizon=6
 
 **2. Certificate Management**
 ```bash
-# Monthly certificate audit
+# Monthly certificate audit (human-readable)
 for ns in production staging development; do
     echo "=== $ns ==="
-    kubectl-smart top $ns --horizon=720  # 30 days
+    kubectl-smart top "$ns" --horizon=720  # 30 days
 done
 ```
 
-**3. Cost Optimization**
+**3. Capacity Review**
 ```bash
-# Find over-provisioned namespaces
-kubectl-smart top expensive-app --json | jq '.forecast.utilization'
-
-# Identify scaling opportunities  
+# Identify scaling opportunities
 kubectl-smart top microservices --horizon=72
 ```
 
@@ -457,16 +399,13 @@ kubectl-smart --debug top production
 
 ### Quiet Mode
 
-```bash
-# Silent execution (only exit codes)
-kubectl-smart --quiet diag pod my-pod
-kubectl-smart -q diag pod my-pod
+Use shell redirection to suppress output when only exit codes are needed:
 
-# Perfect for scripts and automation
-if kubectl-smart -q diag pod $CRITICAL_POD; then
-    echo "All good"
+```bash
+if kubectl-smart diag pod "$CRITICAL_POD" >/dev/null; then
+  echo "All good"
 else
-    echo "Issue detected, exit code: $?"  
+  echo "Issue detected, exit code: $?"
 fi
 ```
 
@@ -485,14 +424,11 @@ kubectl-smart diag pod api-pod -n api --context=prod-east
 ### Combining Options
 
 ```bash
-# Debug mode + JSON output
-kubectl-smart --debug diag pod my-pod --json
+# Debug mode
+kubectl-smart --debug diag pod my-pod
 
-# Quiet mode + specific context
-kubectl-smart -q graph svc api --context=production --upstream
-
-# All options combined
-kubectl-smart --debug diag deploy my-app -n production --context=prod-cluster --json
+# Context + namespace
+kubectl-smart graph svc api --context=production --upstream -n api
 ```
 
 ---
@@ -504,7 +440,8 @@ kubectl-smart --debug diag deploy my-app -n production --context=prod-cluster --
 **Step 1: Initial Triage**
 ```bash
 # Quick health check
-kubectl-smart diag pod $FAILING_POD -n $NAMESPACE -q
+# Note: use shell redirection for quiet mode
+kubectl-smart diag pod $FAILING_POD -n $NAMESPACE >/dev/null
 exit_code=$?
 
 if [ $exit_code -eq 2 ]; then
@@ -577,7 +514,7 @@ for ns in "${CRITICAL_NAMESPACES[@]}"; do
     
     # Check all deployments
     for deploy in $(kubectl get deployments -n $ns -o name); do
-        kubectl-smart diag $deploy -q
+        kubectl-smart diag $deploy >/dev/null
         if [ $? -ne 0 ]; then
             echo "❌ Issues found in $deploy"
             kubectl-smart diag $deploy  # Full details
@@ -591,51 +528,25 @@ done
 ### Certificate Monitoring
 
 ```bash
-#!/bin/bash  
-# cert-monitor.sh - Check certificate expiration across all namespaces
-
-echo "🔒 Certificate Expiration Report"
-echo "==============================="
+#!/bin/bash
+# cert-monitor.sh - Quick scan across all namespaces (human-readable)
 
 for ns in $(kubectl get namespaces -o name | cut -d'/' -f2); do
-    output=$(kubectl-smart top $ns --horizon=336 --json 2>/dev/null)  # 14 days
-    
-    if echo "$output" | jq -e '.certificate_warnings[]' >/dev/null 2>&1; then
-        echo "Namespace: $ns"
-        echo "$output" | jq -r '.certificate_warnings[] | "  ⚠️  \(.name) expires in \(.days_remaining) days"'
-        echo ""
-    fi
+  out=$(kubectl-smart top "$ns" --horizon=336 2>/dev/null)
+  if echo "$out" | grep -q "CERTIFICATE WARNINGS"; then
+    echo "=== $ns ==="
+    echo "$out" | sed -n '/CERTIFICATE WARNINGS/,$p' | sed -n '1,10p'
+  fi
 done
 ```
 
-### Automated Scaling Decisions
+### Automated Checks
 
 ```bash
-#!/bin/bash
-# auto-scaler.sh - Scale based on kubectl-smart predictions
-
-NAMESPACE=$1
-THRESHOLD=90
-
-forecast=$(kubectl-smart top $NAMESPACE --horizon=12 --json)
-
-# Check CPU predictions
-cpu_prediction=$(echo "$forecast" | jq -r '.predictions.cpu.utilization_percentage')
-
-if [ "$cpu_prediction" -gt "$THRESHOLD" ]; then
-    echo "CPU utilization will reach $cpu_prediction% - scaling up"
-    
-    # Find deployments to scale
-    deployments=$(echo "$forecast" | jq -r '.predictions.cpu.affected_resources[]')
-    
-    for deploy in $deployments; do
-        current_replicas=$(kubectl get deploy $deploy -n $NAMESPACE -o jsonpath='{.spec.replicas}')
-        new_replicas=$((current_replicas + 2))
-        
-        echo "Scaling $deploy from $current_replicas to $new_replicas"
-        kubectl scale deploy $deploy -n $NAMESPACE --replicas=$new_replicas
-    done
-fi
+# Fail a pipeline if capacity warnings show up
+out=$(kubectl-smart top production --horizon=24)
+echo "$out"
+echo "$out" | grep -q "CAPACITY WARNINGS" && exit 1 || true
 ```
 
 ---
@@ -670,8 +581,8 @@ kubectl config use-context minikube
 # Enable debug mode to see what's taking time
 kubectl-smart --debug diag pod slow-pod
 
-# Use quiet mode for faster automation
-kubectl-smart -q diag pod my-pod
+# Use redirection for faster automation
+kubectl-smart diag pod my-pod >/dev/null
 ```
 
 ### Best Practices
@@ -691,15 +602,12 @@ kubectl-smart top $NAMESPACE         # Will this cause more issues?
 
 **3. Automation-Friendly**
 ```bash
-# Always use --quiet for scripts
-# Always use --json for parsing
 # Always check exit codes
-
-if kubectl-smart diag pod $POD -q; then
+if kubectl-smart diag pod $POD >/dev/null; then
     status="healthy"
 else
     status="unhealthy"
-    details=$(kubectl-smart diag pod $POD --json)
+    details=$(kubectl-smart diag pod $POD)
 fi
 ```
 
@@ -737,7 +645,9 @@ time kubectl-smart top production
 ```yaml
 - name: Health Check
   run: |
-    if ! kubectl-smart diag deploy ${{ env.APP_NAME }} -n ${{ env.NAMESPACE }} -q; then
+    if kubectl-smart diag deploy ${{ env.APP_NAME }} -n ${{ env.NAMESPACE }} >/dev/null; then
+      echo "Deployment healthy"
+    else
       echo "Deployment health check failed"
       kubectl-smart diag deploy ${{ env.APP_NAME }} -n ${{ env.NAMESPACE }}
       exit 1
@@ -745,31 +655,14 @@ time kubectl-smart top production
 
 - name: Capacity Check  
   run: |
-    kubectl-smart top ${{ env.NAMESPACE }} --horizon=24 --json > capacity.json
-    if jq -e '.warnings[] | select(.severity == "critical")' capacity.json; then
-      echo "Critical capacity warnings detected"
-      exit 1
-    fi
+    out=$(kubectl-smart top ${{ env.NAMESPACE }} --horizon=24)
+    echo "$out"
+    echo "$out" | grep -q "CAPACITY WARNINGS" && exit 1 || true
 ```
 
 ### Monitoring Integration
 
-**Prometheus/Grafana:**
-```bash
-# Export metrics to Prometheus format
-kubectl-smart top production --json | jq '.predictions' > /tmp/kubectl-smart-metrics.json
-```
-
-**Alert Manager:**
-```bash  
-# Certificate expiration alerts
-kubectl-smart top production --json | \
-  jq '.certificate_warnings[] | select(.days_remaining < 7)' | \
-  while read cert; do
-    # Send alert
-    echo "Certificate expiring: $cert"
-  done
-```
+kubectl-smart is human-first output. For automation, rely on exit codes (diag) and simple text checks (top).
 
 ---
 

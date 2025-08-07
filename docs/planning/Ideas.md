@@ -127,7 +127,7 @@ kubectl smart predict pod payment-api
 kubectl smart predict pvc user-data
 
 # Output formats
-kubectl smart predict --format=json   # For automation
+kubectl smart predict                 # For automation via exit codes/text
 kubectl smart predict --format=slack  # For notifications
 ```
 

@@ -170,20 +170,119 @@ class ForecastingEngine:
         capacity = status.get('capacity', {})
         used_storage = capacity.get('storage', storage)  # Fallback to requested
         
-        # This is simplified - real implementation would track usage over time
-        # For now, just flag PVCs that are bound but might be near capacity
-        if pvc.status == 'Bound':
-            predictions.append({
-                'type': 'pvc_usage',
-                'resource': pvc.full_name,
-                'current_size': storage,
-                'predicted_utilization': 85.0,  # Estimated
-                'forecast_hours': self.forecast_horizon_hours,
-                'message': f"PVC {pvc.name} usage trending upward",
-                'suggested_action': f"Monitor disk usage on PVC {pvc.name}"
-            })
+        # Use kubelet metrics parsed for PVC utilization if available
+        metrics = pvc.get_property('metrics', {})
+        used_bytes = float(metrics.get('pvc_used_bytes', 0))
+        capacity_bytes = float(metrics.get('pvc_capacity_bytes', 0))
+        if used_bytes > 0 and capacity_bytes > 0:
+            utilization = (used_bytes / capacity_bytes) * 100.0
+            # Persist sample for forecasting across runs
+            try:
+                self._append_pvc_utilization_sample(pvc.namespace or "default", pvc.name, utilization)
+            except Exception as e:
+                logger.debug("Failed to append PVC sample", error=str(e))
+
+            if utilization >= 90.0:
+                predictions.append({
+                    'type': 'pvc_usage',
+                    'resource': pvc.full_name,
+                    'current_utilization': utilization,
+                    'predicted_utilization': utilization,
+                    'forecast_hours': 0,
+                    'message': f"PVC {pvc.name} is at {utilization:.1f}%",
+                    'suggested_action': f"Expand PVC or free space"
+                })
+            else:
+                # Try to forecast from cached history
+                predicted = utilization
+                try:
+                    history = self._load_pvc_utilization_series(pvc.namespace or "default", pvc.name)
+                    forecast = self._forecast_from_history(history, utilization)
+                    if forecast is not None:
+                        predicted = forecast
+                except Exception as e:
+                    logger.debug("PVC forecast failed; using current utilization", error=str(e))
+
+                predictions.append({
+                    'type': 'pvc_usage',
+                    'resource': pvc.full_name,
+                    'current_utilization': utilization,
+                    'predicted_utilization': predicted,
+                    'forecast_hours': self.forecast_horizon_hours,
+                    'message': f"PVC {pvc.name} current utilization {utilization:.1f}%",
+                    'suggested_action': f"Monitor usage on PVC {pvc.name}"
+                })
         
         return predictions
+
+    # ---------------------- simple local cache for PVC utilization ----------------------
+    def _cache_path(self) -> str:
+        import os
+        base = os.path.expanduser("~/.cache/kubectl-smart")
+        try:
+            os.makedirs(base, exist_ok=True)
+        except Exception:
+            pass
+        return os.path.join(base, "metrics.json")
+
+    def _append_pvc_utilization_sample(self, namespace: str, pvc: str, utilization: float) -> None:
+        import json, os
+        path = self._cache_path()
+        data = {"pvc": {}}
+        if os.path.exists(path):
+            try:
+                with open(path, "r") as f:
+                    data = json.load(f)
+            except Exception:
+                data = {"pvc": {}}
+        key = f"{namespace}/{pvc}"
+        series = data.setdefault("pvc", {}).setdefault(key, [])
+        from datetime import datetime, timezone
+        series.append({"ts": datetime.now(timezone.utc).isoformat(), "util": utilization})
+        # keep last 50
+        if len(series) > 50:
+            series[:] = series[-50:]
+        tmp = f"{path}.tmp"
+        with open(tmp, "w") as f:
+            json.dump(data, f)
+        os.replace(tmp, path)
+
+    def _load_pvc_utilization_series(self, namespace: str, pvc: str) -> List[Tuple[datetime, float]]:
+        import json, os
+        from datetime import datetime
+        path = self._cache_path()
+        if not os.path.exists(path):
+            return []
+        with open(path, "r") as f:
+            data = json.load(f)
+        key = f"{namespace}/{pvc}"
+        raw = data.get("pvc", {}).get(key, [])
+        result: List[Tuple[datetime, float]] = []
+        for p in raw:
+            try:
+                ts = datetime.fromisoformat(p["ts"].replace('Z', '+00:00'))
+                result.append((ts, float(p["util"])))
+            except Exception:
+                continue
+        return result
+
+    def _forecast_from_history(self, series: List[Tuple[datetime, float]], current_util: float) -> Optional[float]:
+        # Use simple linear slope per hour across last 2-3 points
+        if len(series) < 2:
+            return None
+        # take last three points
+        pts = series[-3:]
+        # compute slope util per hour
+        try:
+            t0, u0 = pts[0]
+            t1, u1 = pts[-1]
+            hours = max(0.0001, (t1 - t0).total_seconds() / 3600.0)
+            slope = (u1 - u0) / hours
+            predicted = current_util + slope * self.forecast_horizon_hours
+            # clamp 0..100
+            return max(0.0, min(100.0, predicted))
+        except Exception:
+            return None
     
     def _check_secret_certificates(self, secret: ResourceRecord) -> List[Dict[str, any]]:
         """Check secret for TLS certificate expiry"""
@@ -199,29 +298,32 @@ class ForecastingEngine:
         if 'tls.crt' not in data and 'cert' not in data:
             return warnings
         
-        # Try to parse certificate (simplified - real implementation would decode base64 and parse X.509)
+        # Try to parse certificate using X.509
         cert_data = data.get('tls.crt', data.get('cert', ''))
         if cert_data:
-            # This is a placeholder - real implementation would:
-            # 1. Base64 decode the certificate
-            # 2. Parse X.509 certificate
-            # 3. Extract notAfter date
-            # 4. Calculate days until expiry
-            
-            # For now, assume certificates expire in 30 days (placeholder)
-            expiry_date = datetime.now(timezone.utc) + timedelta(days=30)
-            days_until_expiry = (expiry_date - datetime.now(timezone.utc)).days
-            
-            if days_until_expiry <= 14:  # 14 day warning as per spec
-                warnings.append({
-                    'type': 'certificate_expiry',
-                    'resource': secret.full_name,
-                    'certificate_type': 'tls_secret',
-                    'expiry_date': expiry_date.isoformat(),
-                    'days_until_expiry': days_until_expiry,
-                    'message': f"TLS certificate in secret {secret.name} expires in {days_until_expiry} days",
-                    'suggested_action': f"Renew certificate for secret {secret.name}"
-                })
+            try:
+                import base64
+                from cryptography import x509
+                from cryptography.hazmat.backends import default_backend
+                pem = base64.b64decode(cert_data)
+                try:
+                    cert = x509.load_pem_x509_certificate(pem, default_backend())
+                except ValueError:
+                    cert = x509.load_der_x509_certificate(pem, default_backend())
+                expiry_date = cert.not_valid_after.replace(tzinfo=timezone.utc)
+                days_until_expiry = (expiry_date - datetime.now(timezone.utc)).days
+                if days_until_expiry <= 14:
+                    warnings.append({
+                        'type': 'certificate_expiry',
+                        'resource': secret.full_name,
+                        'certificate_type': 'tls_secret',
+                        'expiry_date': expiry_date.isoformat(),
+                        'days_until_expiry': days_until_expiry,
+                        'message': f"TLS certificate in secret {secret.name} expires in {days_until_expiry} days",
+                        'suggested_action': f"Renew certificate for secret {secret.name}"
+                    })
+            except Exception as e:
+                logger.debug("Failed to parse certificate", error=str(e))
         
         return warnings
     

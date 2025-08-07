@@ -18,6 +18,54 @@ NAMESPACE="kubectl-smart-fixtures"
 echo "🔧 Preparing namespace ${NAMESPACE}..."
 kubectl get ns "${NAMESPACE}" >/dev/null 2>&1 || kubectl create ns "${NAMESPACE}"
 
+# Helper: detect if an ingress controller is ready (Minikube-friendly)
+ingress_controller_ready() {
+  # Minikube ingress addon path
+  if command -v minikube >/dev/null 2>&1; then
+    if minikube addons list 2>/dev/null | grep -E '^\s*ingress\s+.*Enabled' >/dev/null 2>&1; then
+      # Wait for controller rollout to finish (up to 2 minutes)
+      if ! kubectl -n ingress-nginx rollout status deployment/ingress-nginx-controller --timeout=120s >/dev/null 2>&1; then
+        return 1
+      fi
+      # Admission webhook service must have endpoints
+      local eps
+      eps=$(kubectl -n ingress-nginx get endpoints ingress-nginx-controller-admission \
+              -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null || true)
+      if [ -z "${eps}" ]; then
+        return 1
+      fi
+      # Final guard: server-side dry-run the manifest to confirm the webhook responds
+      cat <<EOF | kubectl apply -n ${NAMESPACE} -f - --dry-run=server >/dev/null 2>&1
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tls-ref-ingress
+spec:
+  tls:
+  - hosts:
+    - example.local
+    secretName: expiring-cert
+  rules:
+  - host: example.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: tls-ref-svc
+            port:
+              number: 80
+EOF
+      if [ $? -ne 0 ]; then
+        return 1
+      fi
+      return 0
+    fi
+  fi
+  return 1
+}
+
 # Ensure default service account exists in the namespace (avoid race with SA controller)
 echo "⏳ Ensuring default service account in ${NAMESPACE}..."
 for i in {1..30}; do
@@ -31,6 +79,7 @@ done
 ################################################################################
 # 1. ImagePullBackOff (bad image) – single failing pod
 ################################################################################
+kubectl -n ${NAMESPACE} delete pod image-pull-error --ignore-not-found >/dev/null 2>&1 || true
 cat <<'EOF' | kubectl apply -n ${NAMESPACE} -f -
 apiVersion: v1
 kind: Pod
@@ -76,6 +125,7 @@ EOF
 ################################################################################
 # 3. Pending due to PVC (FailedMount) – missing storageclass
 ################################################################################
+kubectl -n ${NAMESPACE} delete pod pvc-pending --ignore-not-found >/dev/null 2>&1 || true
 cat <<'EOF' | kubectl apply -n ${NAMESPACE} -f -
 apiVersion: v1
 kind: Pod
@@ -101,6 +151,7 @@ EOF
 ################################################################################
 # 4. FailedScheduling – resource request beyond node capacity
 ################################################################################
+kubectl -n ${NAMESPACE} delete pod impossible-cpu-request --ignore-not-found >/dev/null 2>&1 || true
 cat <<'EOF' | kubectl apply -n ${NAMESPACE} -f -
 apiVersion: v1
 kind: Pod
@@ -121,6 +172,7 @@ EOF
 ################################################################################
 # 5. NodeSelector mismatch – no node has the label
 ################################################################################
+kubectl -n ${NAMESPACE} delete pod nodeselector-miss --ignore-not-found >/dev/null 2>&1 || true
 cat <<'EOF' | kubectl apply -n ${NAMESPACE} -f -
 apiVersion: v1
 kind: Pod
@@ -140,15 +192,62 @@ EOF
 ################################################################################
 # 6. Expiring certificate secret (<14 days)
 ################################################################################
-# Generate a dummy self-signed cert valid for 7 days.
-tmpdir=$(mktemp -d)
-openssl req -x509 -nodes -days 7 -newkey rsa:2048 \
-  -keyout ${tmpdir}/tls.key -out ${tmpdir}/tls.crt \
-  -subj "/CN=expiring"
-kubectl delete secret expiring-cert -n ${NAMESPACE} --ignore-not-found
-kubectl create secret tls expiring-cert -n ${NAMESPACE} \
-  --cert=${tmpdir}/tls.crt --key=${tmpdir}/tls.key
-rm -rf ${tmpdir}
+# Create once if missing to keep reruns strictly idempotent
+if ! kubectl -n ${NAMESPACE} get secret expiring-cert >/dev/null 2>&1; then
+  echo "🔐 Creating expiring TLS secret (7 days) ..."
+  tmpdir=$(mktemp -d)
+  openssl req -x509 -nodes -days 7 -newkey rsa:2048 \
+    -keyout ${tmpdir}/tls.key -out ${tmpdir}/tls.crt \
+    -subj "/CN=expiring"
+  kubectl create secret tls expiring-cert -n ${NAMESPACE} \
+    --cert=${tmpdir}/tls.crt --key=${tmpdir}/tls.key
+  rm -rf ${tmpdir}
+else
+  echo "🔐 TLS secret expiring-cert already exists; leaving as-is"
+fi
+
+# Service used by the optional Ingress
+cat <<'EOF' | kubectl apply -n ${NAMESPACE} -f -
+apiVersion: v1
+kind: Service
+metadata:
+  name: tls-ref-svc
+spec:
+  selector:
+    app: backend-1
+  ports:
+  - port: 80
+    targetPort: 80
+EOF
+
+# Optional: Ingress referencing the TLS secret (only if controller ready)
+if ingress_controller_ready; then
+  echo "🌐 Ingress controller detected; applying tls-ref-ingress"
+  cat <<'EOF' | kubectl apply -n ${NAMESPACE} -f -
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tls-ref-ingress
+spec:
+  tls:
+  - hosts:
+    - example.local
+    secretName: expiring-cert
+  rules:
+  - host: example.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: tls-ref-svc
+            port:
+              number: 80
+EOF
+else
+  echo "⚠️  No ready ingress controller detected; skipping Ingress creation"
+fi
 
 ################################################################################
 # 7. Node DiskPressure simulation (taint) – mark node condition
@@ -209,6 +308,7 @@ EOF
 
 # Create 5 backend pods
 for i in $(seq 1 5); do
+  kubectl -n ${NAMESPACE} delete pod backend-${i} --ignore-not-found >/dev/null 2>&1 || true
   cat <<EOF | kubectl apply -n ${NAMESPACE} -f -
 apiVersion: v1
 kind: Pod
@@ -228,6 +328,7 @@ done
 # 10. ConfigMap / Secret as volumes (external edge)
 ################################################################################
 kubectl create configmap external-config -n ${NAMESPACE} --from-literal=key=val --dry-run=client -o yaml | kubectl apply -f -
+kubectl -n ${NAMESPACE} delete pod configmap-volume --ignore-not-found >/dev/null 2>&1 || true
 cat <<'EOF' | kubectl apply -n ${NAMESPACE} -f -
 apiVersion: v1
 kind: Pod
@@ -268,6 +369,7 @@ spec:
 EOF
 
 for i in $(seq 1 60); do
+  kubectl -n ${NAMESPACE} delete pod huge-backend-${i} --ignore-not-found >/dev/null 2>&1 || true
   cat <<EOF | kubectl apply -n ${NAMESPACE} -f -
 apiVersion: v1
 kind: Pod
@@ -308,6 +410,7 @@ spec:
   storageClassName: ${SC}
 EOF
 
+kubectl -n ${NAMESPACE} delete pod pvc-filler --ignore-not-found >/dev/null 2>&1 || true
 cat <<'EOF' | kubectl apply -n ${NAMESPACE} -f -
 apiVersion: v1
 kind: Pod
@@ -324,7 +427,7 @@ spec:
   containers:
   - name: filler
     image: busybox
-    command: ["/bin/sh", "-c", "dd if=/dev/zero of=/data/bigfile bs=1M count=950 || true && sleep 3600"]
+    command: ["/bin/sh", "-c", "dd if=/dev/zero of=/data/bigfile bs=1M count=950; sync; sleep 3600"]
     volumeMounts:
     - mountPath: /data
       name: data

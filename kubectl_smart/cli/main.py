@@ -124,7 +124,7 @@ def diag(
     [bold]Examples:[/bold]
       kubectl-smart diag pod failing-pod
       kubectl-smart diag deploy my-app -n production
-      kubectl-smart diag sts database --format=json
+      kubectl-smart diag sts database
     """
 
     
@@ -200,7 +200,7 @@ def graph(
     [bold]Examples:[/bold]
       kubectl-smart graph pod checkout-xyz --upstream
       kubectl-smart graph deploy my-app --downstream
-      kubectl-smart graph sts database -n prod --format=json
+      kubectl-smart graph sts database -n prod
     """
 
     
@@ -273,7 +273,7 @@ def top(
     [bold]Examples:[/bold]
       kubectl-smart top production
       kubectl-smart top kube-system --horizon=24  
-      kubectl-smart top staging --format=json
+      kubectl-smart top staging
     """
 
     

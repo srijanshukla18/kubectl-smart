@@ -335,7 +335,7 @@ class TopCommand(BaseCommand):
         
         try:
             # Collect data for namespace analysis
-            collector_names = ['get', 'metrics']
+            collector_names = ['get', 'metrics', 'kubelet']
             all_resources = await self._collect_data(subject, collector_names)
             
             # Filter to namespace resources
@@ -347,7 +347,7 @@ class TopCommand(BaseCommand):
             # Get metrics data for forecasting
             metrics_data = [r for r in all_resources if r.properties.get('metrics')]
             
-            # Predict capacity issues
+            # Predict capacity issues (nodes + PVCs)
             capacity_warnings = self.forecasting_engine.predict_capacity_issues(
                 namespace_resources, metrics_data
             )
@@ -372,6 +372,7 @@ class TopCommand(BaseCommand):
             renderer = TerminalRenderer(colors_enabled=self.config.colors_enabled)
             output = renderer.render_top(result)
             
+            # Exit code 0 even if warnings exist; top is advisory
             return CommandResult(output=output, exit_code=0, analysis_duration=analysis_duration)
             
         except Exception as e:

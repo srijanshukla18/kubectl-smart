@@ -445,24 +445,20 @@ EOF""",
             f"python3 kubectl-smart analyze namespace {self.namespace}",
             f"python3 kubectl-smart analyze cluster -n {self.namespace}",
             f"python3 kubectl-smart events -n {self.namespace} --critical-path",
-            f"python3 kubectl-smart analyze namespace {self.namespace} --format=json",
+            # JSON output removed in current CLI
         ]
         
         for cmd in commands:
             try:
                 code, stdout, stderr = self.run_command(cmd, timeout=60)
-                key = cmd.split()[-1] if not cmd.endswith("--format=json") else "namespace_json"
+                key = cmd.split()[-1]
                 smart_data[key] = {
                     "command": cmd,
                     "returncode": code,
                     "stdout": stdout,
                     "stderr": stderr
                 }
-                if code == 0 and cmd.endswith("--format=json"):
-                    try:
-                        smart_data[key]["json"] = json.loads(stdout)
-                    except json.JSONDecodeError:
-                        pass
+                # JSON parsing not applicable; CLI outputs human-readable text
             except Exception as e:
                 smart_data[cmd] = {"error": str(e)}
         

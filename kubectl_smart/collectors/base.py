@@ -309,6 +309,45 @@ class MetricsServer(Collector):
             return self._create_blob({}, "text/plain")
 
 
+class KubeletMetricsScrape(Collector):
+    """Collector that scrapes kubelet Prometheus metrics via kubectl raw proxy
+    
+    Targets per-node endpoint: /api/v1/nodes/<node>/proxy/metrics
+    Returns concatenated Prometheus text for parsing.
+    """
+
+    name = "kubelet_metrics"
+
+    async def collect(self, subject: SubjectCtx) -> RawBlob:
+        try:
+            # First get list of nodes; avoid namespace/context flags interfering with --raw
+            from ..models import SubjectCtx as _SC
+            subject_no_ns = _SC(kind=subject.kind, name=subject.name, context=subject.context, scope=subject.scope)
+            # list nodes cluster-wide
+            nodes_json = await self._run_kubectl(['get', 'nodes'], subject_no_ns, output_format="json")
+            items = nodes_json.get('items', []) if isinstance(nodes_json, dict) else []
+
+            combined = []
+            for item in items:
+                node_name = item.get('metadata', {}).get('name')
+                if not node_name:
+                    continue
+                # Use kubectl raw to fetch kubelet metrics
+                # Note: --raw returns plain text
+                try:
+                    data = await self._run_kubectl(['get', '--raw', f"/api/v1/nodes/{node_name}/proxy/metrics"], subject_no_ns, output_format="")
+                    raw_text = data.get('raw', '') if isinstance(data, dict) else ''
+                    if raw_text:
+                        combined.append(f"# node={node_name}\n" + raw_text)
+                except Exception as e:
+                    logger.info("Failed to scrape kubelet metrics for node", node=node_name, error=str(e))
+
+            return self._create_blob("\n".join(combined), "text/plain")
+
+        except Exception as e:
+            logger.info("Kubelet metrics scrape unavailable", error=str(e))
+            return self._create_blob("", "text/plain")
+
 class CollectorRegistry:
     """Registry for managing and creating collectors"""
     
@@ -324,6 +363,7 @@ class CollectorRegistry:
             'events': KubectlEvents,
             'logs': KubectlLogs,
             'metrics': MetricsServer,
+            'kubelet': KubeletMetricsScrape,
         })
     
     def register(self, name: str, collector_class: type):

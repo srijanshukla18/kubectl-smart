@@ -306,69 +306,143 @@ class MetricsParser(Parser):
     """Parser for metrics-server output"""
     
     def feed(self, blob: RawBlob) -> List[ResourceRecord]:
-        """Parse metrics output into resource records with metrics data"""
+        """Parse 'kubectl top' table into ResourceRecords with metrics data"""
         if blob.content_type != "text/plain":
             return []
-        
         try:
             data = blob.data
             if isinstance(data, dict):
                 data = data.get('raw', '')
-            
-            if not isinstance(data, str):
+            if not isinstance(data, str) or not data.strip():
                 return []
-            
-            # Parse metrics table output
-            lines = data.strip().split('\n')
-            if len(lines) < 2:  # Need header and at least one data line
+
+            lines = [ln for ln in data.strip().split('\n') if ln.strip()]
+            if len(lines) < 2:
                 return []
-            
-            header = lines[0]
-            if 'CPU' not in header or 'MEMORY' not in header:
-                return []
-            
-            resources = []
+            header = lines[0].upper()
+            is_node_table = 'CPU%' in header  # nodes show CPU%
+            resources: List[ResourceRecord] = []
             for line in lines[1:]:
-                resource = self._parse_metrics_line(line)
-                if resource:
-                    resources.append(resource)
-            
+                parts = line.split()
+                if is_node_table:
+                    # NAME CPU(cores) CPU% MEMORY(bytes) MEMORY%
+                    if len(parts) < 5:
+                        continue
+                    name = parts[0]
+                    cpu_cores = parts[1]
+                    cpu_percent = parts[2].rstrip('%')
+                    mem_bytes = parts[3]
+                    mem_percent = parts[4].rstrip('%')
+                    properties = {
+                        'metrics': {
+                            'cpu': cpu_cores,
+                            'cpu_percent': cpu_percent,
+                            'memory': mem_bytes,
+                            'memory_percent': mem_percent,
+                        }
+                    }
+                    resources.append(ResourceRecord(
+                        kind=ResourceKind.NODE,
+                        name=name,
+                        uid=f"metrics-node-{name}",
+                        properties=properties,
+                        status='Active'
+                    ))
+                else:
+                    # NAME CPU(cores) MEMORY(bytes)
+                    if len(parts) < 3:
+                        continue
+                    name = parts[0]
+                    cpu = parts[1]
+                    memory = parts[2]
+                    properties = {
+                        'metrics': {
+                            'cpu': cpu,
+                            'memory': memory,
+                        }
+                    }
+                    resources.append(ResourceRecord(
+                        kind=ResourceKind.POD,
+                        name=name,
+                        uid=f"metrics-{name}",
+                        properties=properties,
+                        status='Active'
+                    ))
             return resources
-            
         except Exception as e:
             logger.warning("Failed to parse metrics", error=str(e))
             return []
+
+class PrometheusTextParser(Parser):
+    """Very small Prometheus text parser for selected kubelet series
     
-    def _parse_metrics_line(self, line: str) -> Optional[ResourceRecord]:
-        """Parse a single metrics line"""
-        try:
-            parts = line.split()
-            if len(parts) < 3:
-                return None
-            
-            name = parts[0]
-            cpu = parts[1]
-            memory = parts[2]
-            
-            # Create a pseudo-resource for metrics
-            properties = {
-                'metrics': {
-                    'cpu': cpu,
-                    'memory': memory,
-                }
-            }
-            
-            return ResourceRecord(
-                kind=ResourceKind.POD,  # Assume pod metrics for now
-                name=name,
-                uid=f"metrics-{name}",
-                properties=properties,
-                status='Active'
-            )
-            
-        except Exception as e:
-            logger.debug("Failed to parse metrics line", line=line, error=str(e))
-            return None
+    Extracts kubelet_volume_stats_used_bytes and capacity_bytes with labels
+    namespace and persistentvolumeclaim, producing ResourceRecords keyed to PVCs.
+    """
+
+    def feed(self, blob: RawBlob) -> List[ResourceRecord]:
+        if blob.content_type != "text/plain":
+            return []
+        text = blob.data
+        if isinstance(text, dict):
+            text = text.get('raw', '')
+        if not isinstance(text, str) or not text:
+            return []
+
+        lines = text.splitlines()
+        resources: List[ResourceRecord] = []
+
+        def parse_labels(label_str: str) -> Dict[str, str]:
+            result: Dict[str, str] = {}
+            # label_str like: namespace="ns",persistentvolumeclaim="pvc"
+            for part in label_str.split(','):
+                if '=' in part:
+                    k, v = part.split('=', 1)
+                    v = v.strip().strip('"')
+                    result[k.strip()] = v
+            return result
+
+        # Map key (ns,pvc) -> metrics
+        pvc_metrics: Dict[str, Dict[str, float]] = {}
+
+        for line in lines:
+            if line.startswith('#') or '{' not in line or '}' not in line:
+                continue
+            try:
+                metric, rest = line.split('{', 1)
+                labels_str, value_str = rest.split('}', 1)
+                metric = metric.strip()
+                labels = parse_labels(labels_str)
+                value = float(value_str.strip().split()[0])
+
+                if metric in ("kubelet_volume_stats_used_bytes", "kubelet_volume_stats_capacity_bytes"):
+                    ns = labels.get('namespace')
+                    pvc = labels.get('persistentvolumeclaim')
+                    if ns and pvc:
+                        key = f"{ns}/{pvc}"
+                        pvc_metrics.setdefault(key, {})
+                        if metric.endswith('used_bytes'):
+                            pvc_metrics[key]['used'] = value
+                        else:
+                            pvc_metrics[key]['capacity'] = value
+            except Exception:
+                continue
+
+        for key, m in pvc_metrics.items():
+            if 'used' in m and 'capacity' in m and m['capacity'] > 0:
+                ns, pvc = key.split('/', 1)
+                props = {'metrics': {'pvc_used_bytes': m['used'], 'pvc_capacity_bytes': m['capacity']}}
+                resources.append(ResourceRecord(
+                    kind=ResourceKind.PVC,
+                    name=pvc,
+                    uid=f"pvc-metrics-{ns}-{pvc}",
+                    namespace=ns,
+                    properties=props,
+                    status='Active'
+                ))
+
+        return resources
+
 
 
 class ParserRegistry:
@@ -385,6 +459,7 @@ class ParserRegistry:
             'events': EventParser(),
             'text': TextParser(),
             'metrics': MetricsParser(),
+            'prom': PrometheusTextParser(),
         })
     
     def register(self, name: str, parser: Parser):
@@ -398,8 +473,9 @@ class ParserRegistry:
         elif blob.content_type == "text/plain":
             if blob.source == "metrics_server":
                 return self._parsers['metrics']
-            else:
-                return self._parsers['text']
+            if blob.source == "kubelet_metrics":
+                return self._parsers['prom']
+            return self._parsers['text']
         else:
             return self._parsers['kubernetes']
     
