@@ -1,0 +1,189 @@
+# kubectl-smart Heuristic Scoring Weights Configuration
+# This file defines the scoring weights used by the signal scorer
+# to prioritize issues based on their criticality and impact.
+
+[base_scores]
+# Event reason base scores (0-100)
+# These are the starting scores for different types of events
+
+# Critical failures
+"Failed" = 50.0
+"FailedMount" = 80.0
+"FailedScheduling" = 85.0
+"ImagePullBackOff" = 75.0
+"ErrImagePull" = 75.0
+"Unhealthy" = 70.0
+"NetworkNotReady" = 60.0
+"FailedCreatePodSandBox" = 75.0
+"FailedKillPod" = 65.0
+
+# Resource exhaustion
+"OutOfmemory" = 90.0
+"OutOfcpu" = 85.0
+"OutOfStorage" = 85.0
+"DiskPressure" = 80.0
+"MemoryPressure" = 75.0
+"Evicted" = 80.0
+"Preempting" = 70.0
+
+# Network issues
+"DNSConfigForming" = 50.0
+"NetworkNotReady" = 60.0
+"CNINotReady" = 70.0
+
+# Image issues  
+"InvalidImageName" = 60.0
+"ErrImageNeverPull" = 55.0
+"RegistryUnavailable" = 65.0
+
+# Recovery/normal operations
+"BackOff" = 30.0
+"Pulling" = 10.0
+"Created" = 5.0
+"Started" = 5.0
+"Scheduled" = 5.0
+"Killing" = 40.0
+
+# Resource status base scores
+"status_Failed" = 90.0
+"status_Pending" = 40.0
+"status_Unknown" = 70.0
+"status_NotReady" = 80.0
+"status_Unavailable" = 75.0
+"status_Error" = 85.0
+"status_CrashLoopBackOff" = 85.0
+"status_ImagePullBackOff" = 75.0
+"status_ErrImagePull" = 75.0
+"status_Running" = 0.0
+"status_Active" = 0.0
+"status_Ready" = 0.0
+"status_Available" = 0.0
+"status_Bound" = 0.0
+"status_Complete" = 0.0
+
+[multipliers]
+# Resource type criticality multipliers
+# More critical resource types get higher multipliers
+
+[multipliers.resource_type]
+"Node" = 2.5                    # Node failures affect everything
+"PersistentVolume" = 2.0        # Storage failures are critical
+"PersistentVolumeClaim" = 1.8   # PVC issues block pods
+"StorageClass" = 1.9            # Storage provisioning issues
+"StatefulSet" = 1.6             # StatefulSets are harder to recover
+"Pod" = 1.2                     # Individual pods
+"Deployment" = 1.4              # Deployment issues affect multiple pods
+"DaemonSet" = 1.5               # DaemonSets run on every node
+"Service" = 1.3                 # Service issues affect connectivity
+"Ingress" = 1.4                 # Ingress affects external access
+"ConfigMap" = 1.1               # Configuration issues
+"Secret" = 1.2                  # Credential issues
+"ServiceAccount" = 1.1          # RBAC issues
+"Namespace" = 1.7               # Namespace issues affect everything in it
+"Job" = 1.0                     # Jobs are typically one-time
+"CronJob" = 1.0                 # CronJobs are typically repeatable
+
+# Event type severity multipliers
+[multipliers.event_type]
+"Warning" = 2.0                 # Warning events are more critical
+"Normal" = 1.0                  # Normal events are informational
+
+# Critical path bonus - issues on critical dependency paths
+"critical_path" = 1.8
+
+# Age-based multipliers (older events are generally less critical)
+[multipliers.age_hours]
+"0-1" = 1.0      # Very recent - most relevant
+"1-6" = 0.9      # Recent - still very relevant  
+"6-24" = 0.7     # Several hours old - somewhat relevant
+"24-168" = 0.5   # Days old - less relevant
+"168+" = 0.3     # Week+ old - least relevant
+
+# Namespace criticality (some namespaces are more important)
+[multipliers.namespace]
+"kube-system" = 2.0             # System namespace
+"kube-public" = 1.5             # Public namespace
+"kube-node-lease" = 1.2         # Node lease namespace
+"default" = 1.0                 # Default namespace
+"production" = 1.8              # Production workloads
+"prod" = 1.8                    # Production workloads  
+"staging" = 1.3                 # Staging workloads
+"dev" = 1.0                     # Development workloads
+"test" = 0.8                    # Test workloads
+
+[keywords]
+# Keyword-based scoring boosts
+# These add points when found in event messages
+
+[keywords.critical]
+# Critical error patterns that indicate serious problems
+patterns = [
+    "failed", "error", "timeout", "unable", "cannot", "denied",
+    "not found", "no space", "disk full", "out of memory", "oom",
+    "connection refused", "network unreachable", "permission denied",
+    "access denied", "forbidden", "unauthorized", "invalid",
+    "corrupted", "damaged", "lost", "missing", "unreachable",
+    "crash", "panic", "fatal", "emergency", "critical"
+]
+score = 15.0
+
+[keywords.warning]  
+# Warning patterns that indicate potential issues
+patterns = [
+    "warning", "deprecated", "retry", "backoff", "slow",
+    "degraded", "limited", "throttled", "rate limit", "quota",
+    "approaching", "near", "close to", "almost", "soon"
+]
+score = 8.0
+
+[keywords.resource_specific]
+# Resource/capacity related issues
+patterns = [
+    "insufficient", "exceeded", "quota", "limit", "capacity",
+    "evicted", "preempted", "oomkilled", "no resources",
+    "too many", "not enough", "running out", "exhausted",
+    "pressure", "constraint", "requirement", "allocation"
+]
+score = 12.0
+
+[keywords.network]
+# Network-specific issues
+patterns = [
+    "dns", "network", "connection", "endpoint", "port",
+    "route", "proxy", "ingress", "service mesh", "cni",
+    "firewall", "security group", "load balancer"
+]
+score = 10.0
+
+[keywords.storage]
+# Storage-specific issues  
+patterns = [
+    "volume", "mount", "disk", "storage", "filesystem", "pv", "pvc",
+    "provisioning", "attach", "detach", "io error", "read-only"
+]
+score = 11.0
+
+[keywords.security]
+# Security-related issues
+patterns = [
+    "rbac", "permission", "authentication", "authorization", "token",
+    "certificate", "tls", "ssl", "secret", "credential", "security"
+]
+score = 9.0
+
+[thresholds]
+# Severity thresholds as specified in the technical requirements
+critical = 90.0     # Issues with score >= 90 are critical
+warning = 50.0      # Issues with score >= 50 are warnings
+info = 0.0          # Issues with score < 50 are info
+
+# Display limits
+max_issues_display = 10         # Maximum issues to show in output
+max_contributing_factors = 2    # Maximum contributing factors to show
+max_suggested_actions = 5       # Maximum suggested actions to show
+
+[experimental]
+# Experimental features - may change in future versions
+enable_ml_scoring = false       # Enable ML-based scoring (future)
+enable_historical_analysis = false  # Use historical patterns (future)
+enable_cluster_context = true  # Consider cluster-wide context

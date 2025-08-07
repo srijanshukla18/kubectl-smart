@@ -1,0 +1,194 @@
+# PREDICTIVE ENGINE INTEGRATION
+class PredictiveEngine:
+    def __init__(self, kubectl):
+        self.kubectl = kubectl
+        self.predictors = {
+            'certificate': CertificateExpiryPredictor(),
+            'disk': DiskUsagePredictor(),
+            'memory': MemoryLeakPredictor(),
+            'cost': CostAnomalyPredictor()
+        }
+    
+    def predict(self, horizon_hours=72):
+        """Run all predictive models"""
+        predictions = []
+        for name, predictor in self.predictors.items():
+            try:
+                predictions.extend(predictor.forecast(self.kubectl, horizon_hours))
+            except Exception as e:
+                logging.error(f"Prediction failed for {name}: {str(e)}")
+        return sorted(predictions, key=lambda x: x.risk_score, reverse=True)
+
+class CertificateExpiryPredictor:
+    def forecast(self, kubectl, horizon_hours):
+        """Predict certificate expirations"""
+        certs = kubectl.get_resources('secret', field_selector='type=kubernetes.io/tls')
+        now = datetime.utcnow()
+        predictions = []
+        
+        for cert in certs:
+            if 'data' not in cert: continue
+            
+            expiry = self._parse_expiry(cert['data'].get('tls.crt', ''))
+            if not expiry: continue
+            
+            hours_left = (expiry - now).total_seconds() / 3600
+            if hours_left < horizon_hours:
+                predictions.append(Prediction(
+                    resource=f"Secret/{cert['metadata']['namespace']}/{cert['metadata']['name']}",
+                    type="certificate",
+                    risk="TLS expiry",
+                    timeframe=f"{hours_left:.1f}h",
+                    risk_score=100 - hours_left/24*100,  # 0-100 scale
+                    remediation=f"kubectl -n {cert['metadata']['namespace']} delete secret {cert['metadata']['name']}",
+                    certainty=0.95 if hours_left < 48 else 0.85
+                ))
+        return predictions
+
+# MEMORY LEAK PREDICTOR (USING PROMETHEUS)
+class MemoryLeakPredictor:
+    def forecast(self, kubectl, horizon_hours):
+        """Predict OOM events based on memory growth patterns"""
+        # Connect to Prometheus
+        prom = PrometheusClient()
+        
+        # Get memory usage metrics for all pods
+        query = 'container_memory_working_set_bytes{container!="", container!="POD"}'
+        series = prom.query_range(query, hours=24, step='5m')
+        
+        predictions = []
+        for pod_series in series:
+            # Analyze memory growth pattern
+            trend = self._analyze_trend(pod_series['values'])
+            if trend.growth_rate_per_hour > 5:  # >5%/hr growth
+                predictions.append(Prediction(
+                    resource=f"Pod/{pod_series['metric']['namespace']}/{pod_series['metric']['pod']}",
+                    type="memory",
+                    risk="OOM risk",
+                    timeframe=f"{24/trend.growth_rate_per_hour:.1f}h",
+                    risk_score=min(99, trend.growth_rate_per_hour*10),
+                    remediation="Check for memory leaks in application",
+                    certainty=0.8
+                ))
+        return predictions
+
+# COST ANOMALY DETECTOR
+class CostAnomalyPredictor:
+    def forecast(self, kubectl, horizon_hours):
+        """Predict cost spikes using historical patterns"""
+        # Get cost data from cloud provider API
+        cost_data = CloudCostAPI.get_last_30d()
+        
+        predictions = []
+        # Detect abnormal daily patterns
+        if self._is_weekend_spike(cost_data):
+            predictions.append(Prediction(
+                resource="Cluster",
+                type="cost",
+                risk="Weekend cost spike",
+                timeframe="Next 48h",
+                risk_score=70,
+                remediation="Scale down non-essential workloads",
+                certainty=0.9
+            ))
+        return predictions
+
+# ADD TO SmartKubectl CLASS
+def predict(self, horizon=72, risk_threshold=50):
+    """Predict and prevent failures"""
+    engine = PredictiveEngine(self.kubectl)
+    predictions = engine.predict(horizon)
+    
+    # Filter by risk threshold
+    predictions = [p for p in predictions if p.risk_score >= risk_threshold]
+    
+    if not predictions:
+        return "✅ No high-risk predictions in the next {} hours".format(horizon)
+    
+    # Format output
+    output = ["🔮 PREDICTIVE FAILURE PREVENTION (Next {}h):".format(horizon)]
+    for p in predictions:
+        output.append(
+            f"\n{p.risk_icon} {p.resource}: {p.risk} in {p.timeframe} "
+            f"(score: {p.risk_score}/100)"
+        )
+        output.append(f"   FIX: {p.remediation}")
+        if p.certainty < 0.9:
+            output.append(f"   NOTE: Confidence {p.certainty*100:.0f}% - verify manually")
+    
+    return "\n".join(output)
+
+# ADD TO main() FUNCTION
+predict_parser = subparsers.add_parser('predict', help='Predict and prevent failures')
+predict_parser.add_argument('--horizon', type=int, default=72, 
+                           help='Prediction window in hours (default: 72)')
+predict_parser.add_argument('--risk-threshold', type=int, default=50,
+                           help='Minimum risk score to show (0-100, default: 50)')
+
+# REGISTER NEW PREDICTORS DYNAMICALLY
+def register_predictor(name, predictor):
+    PredictiveEngine.predictors[name] = predictor
+
+# EXAMPLE USAGE
+register_predictor('network', NetworkSaturationPredictor())
+
+class Prediction:
+    RISK_ICONS = {
+        'critical': '🔴',
+        'high': '🟠',
+        'medium': '🟡',
+        'low': '🟢'
+    }
+    
+    def __init__(self, resource, type, risk, timeframe, risk_score, remediation, certainty):
+        self.resource = resource
+        self.type = type
+        self.risk = risk
+        self.timeframe = timeframe
+        self.risk_score = min(100, max(0, risk_score))
+        self.remediation = remediation
+        self.certainty = min(1.0, max(0.1, certainty))
+        
+    @property
+    def risk_icon(self):
+        if self.risk_score >= 80: return self.RISK_ICONS['critical']
+        if self.risk_score >= 60: return self.RISK_ICONS['high']
+        if self.risk_score >= 40: return self.RISK_ICONS['medium']
+        return self.RISK_ICONS['low']
+
+class PredictionValidator:
+    def __init__(self):
+        self.prediction_log = []
+    
+    def record(self, prediction, occurred):
+        """Record prediction accuracy"""
+        self.prediction_log.append({
+            'timestamp': datetime.utcnow(),
+            'prediction': prediction,
+            'occurred': occurred
+        })
+    
+    def calculate_accuracy(self, predictor_name):
+        """Calculate accuracy for a predictor"""
+        relevant = [p for p in self.prediction_log 
+                   if p['prediction'].type == predictor_name]
+        if not relevant: return 0.0
+        correct = sum(1 for p in relevant if p['occurred'])
+        return correct / len(relevant)
+        
+
+# INSTALL WITH PREDICTIVE DEPENDENCIES
+pip install kubectl-smart[predict]
+
+# RUN PREDICTIONS
+kubectl smart predict --horizon 168 --risk-threshold 70
+
+# SAMPLE OUTPUT
+🔮 PREDICTIVE FAILURE PREVENTION (Next 168h):
+
+🔴 Secret/prod/tls-cert: TLS expiry in 53h (score: 92/100)
+   FIX: kubectl -n cert-manager delete secret prod-tls-cert
+   NOTE: Automatically regenerated by cert-manager
+
+🟠 Pod/analytics-service-58fd9: OOM risk in 62h (score: 78/100)
+   FIX: Increase memory limits to 1.5Gi (current: 1Gi)

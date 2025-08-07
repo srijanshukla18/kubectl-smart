@@ -1,0 +1,30 @@
+#!/usr/bin/env python3
+"""
+kubectl-smart: Intelligent kubectl plugin for Kubernetes debugging
+
+Production-ready modular implementation featuring the bare-bones power trio:
+- diag: root-cause analysis of workloads
+- graph: dependency visualization with ASCII trees
+- top: predictive capacity and certificate outlook
+"""
+
+import sys
+
+def main():
+    """Main entry point for kubectl-smart"""
+    try:
+        from kubectl_smart.cli.main import app
+        app()
+    except ImportError as e:
+        print(f"Error: Failed to import kubectl-smart modules: {e}", file=sys.stderr)
+        print("\nTo install dependencies, run:", file=sys.stderr)
+        print("  pip install -e .", file=sys.stderr)
+        print("  # or", file=sys.stderr)
+        print("  pip install typer python-igraph statsmodels rich pydantic structlog async-timeout", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()

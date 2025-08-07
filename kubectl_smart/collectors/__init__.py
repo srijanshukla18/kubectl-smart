@@ -1,0 +1,1 @@
+"""Collectors module for kubectl command wrappers"""

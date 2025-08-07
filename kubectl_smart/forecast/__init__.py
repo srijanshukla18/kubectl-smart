@@ -1,0 +1,1 @@
+"""Forecast module for predictive analysis using statsmodels"""
