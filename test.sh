@@ -45,8 +45,10 @@ run_test() {
     log_info "Running test: $test_name"
     log_info "Command: $command"
 
-    # Run command and capture exit code properly
-    eval "$command"
+    # Run command safely using an array to avoid eval injection
+    local -a cmd_array
+    IFS=' ' read -r -a cmd_array <<< "$command"
+    "${cmd_array[@]}"
     local exit_code=$?
 
     local test_passed=false
@@ -80,8 +82,9 @@ run_test_with_output() {
     log_info "Command: $command"
     
     local output exit_code
-    # Run the command, capture all output and exit-code, but don't let non-zero fail automatically
-    output=$(eval "$command" 2>&1)
+    local -a cmd_array
+    IFS=' ' read -r -a cmd_array <<< "$command"
+    output=$("${cmd_array[@]}" 2>&1)
     exit_code=$?
 
     if [[ "$output" =~ $expected_pattern ]]; then
@@ -390,6 +393,47 @@ done
 # =============================================================================
 # STRESS TESTS
 # =============================================================================
+# FIXTURE NAMESPACE TESTS (kubectl-smart-fixtures)
+# =============================================================================
+FIX_NS="kubectl-smart-fixtures"
+
+# Give cluster a chance to create the namespace if the setup script was just run
+kubectl get ns "$FIX_NS" &>/dev/null && {
+  # Diag various synthetic failure cases
+  if kubectl get pod image-pull-error -n "$FIX_NS" &>/dev/null; then
+    run_test "diag image-pull-error pod" "kubectl-smart diag pod image-pull-error -n $FIX_NS" 2
+  fi
+
+  if kubectl get deploy crashloop -n "$FIX_NS" &>/dev/null; then
+    run_test "diag crashloop deployment" "kubectl-smart diag deploy crashloop -n $FIX_NS" 2
+  fi
+
+  if kubectl get pod pvc-pending -n "$FIX_NS" &>/dev/null; then
+    run_test "diag pvc-pending pod" "kubectl-smart diag pod pvc-pending -n $FIX_NS" 2
+  fi
+
+  if kubectl get pod impossible-cpu-request -n "$FIX_NS" &>/dev/null; then
+    run_test "diag impossible-cpu pod" "kubectl-smart diag pod impossible-cpu-request -n $FIX_NS" 2
+  fi
+
+  if kubectl get deploy partial-unhealthy -n "$FIX_NS" &>/dev/null; then
+    run_test "diag partial-unhealthy deploy" "kubectl-smart diag deploy partial-unhealthy -n $FIX_NS" 2
+  fi
+
+  # Graph scenarios
+  if kubectl get svc huge-service -n "$FIX_NS" &>/dev/null; then
+    run_test "graph huge-service downstream" "kubectl-smart graph svc huge-service -n $FIX_NS --downstream" 0
+  fi
+  if kubectl get svc multi-backend -n "$FIX_NS" &>/dev/null; then
+    run_test "graph multi-backend downstream" "kubectl-smart graph svc multi-backend -n $FIX_NS --downstream" 0
+  fi
+
+  # Top for capacity / cert predictions (always exit 0)
+  run_test "top fixtures namespace" "kubectl-smart top $FIX_NS" 0
+}
+
+# STRESS TESTS
+# =============================================================================
 echo "🏋️  Testing STRESS CONDITIONS"
 echo "==========================="
 
@@ -435,4 +479,4 @@ fi
 echo ""
 echo "🏁 Test Execution Complete"
 echo "========================="
-echo "Total: $TOTAL_TESTS, Passed: $((TOTAL_TESTS - FAILED_TESTS)), Failed: $FAILED_TESTS
+echo "Total: $TOTAL_TESTS, Passed: $((TOTAL_TESTS - FAILED_TESTS)), Failed: $FAILED_TESTS"
