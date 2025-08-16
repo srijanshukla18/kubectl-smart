@@ -146,12 +146,17 @@ class KubernetesResourceParser(Parser):
             # Extract status
             status = self._extract_resource_status(data, kind)
             
-            # Store the full resource data in properties
+            # Store key sections of the resource in properties
             properties = {
                 'spec': data.get('spec', {}),
                 'status': data.get('status', {}),
                 'metadata': metadata,
             }
+            # Include generic 'data' (e.g., Secret/ConfigMap) and resource 'type' if present
+            if 'data' in data:
+                properties['data'] = data.get('data', {})
+            if 'type' in data:
+                properties['type'] = data.get('type', '')
             
             return ResourceRecord(
                 kind=kind,

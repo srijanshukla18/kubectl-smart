@@ -52,16 +52,16 @@ Status: CrashLoopBackOff
   💥 CrashLoopBackOff: failing-app-xyz (score: 85.0)
     Container exits immediately after start, in restart loop
 
-🟡 CONTRIBUTING FACTORS  
+🟡 CONTRIBUTING FACTORS
   ⚠️ ImagePullBackOff: failing-app-xyz (score: 75.0)
     Failed to pull image "invalid-registry.com/app:latest"
   📋 Event: Back-off restarting failed container (score: 65.0)
 
 💡 SUGGESTED ACTIONS
-  1. Check container logs: kubectl logs failing-app-xyz -n production
-  2. Verify image exists: docker pull invalid-registry.com/app:latest
-  3. Check image pull secrets: kubectl get secrets -n production
-  4. Review container configuration in deployment
+  1. kubectl logs failing-app-xyz -n production
+  2. docker pull invalid-registry.com/app:latest
+  3. kubectl get secrets -n production
+  4. Review container spec (resources, env, command)
 
 ⏱️  Analysis completed in 1.2s
 ```
@@ -142,33 +142,33 @@ kubectl-smart graph pod api-pod --upstream
 kubectl-smart graph pod api-pod --upstream --downstream
 ```
 
-**Sample Output:**
+**Sample Output (clean ASCII tree):**
 ```
 🔗 DEPENDENCY GRAPH: Pod/default/api-pod
 
 📊 UPSTREAM DEPENDENCIES (what api-pod depends on):
 api-pod
 ├── ConfigMap/api-config ✅
-├── Secret/api-secrets ✅  
-├── Service/database-svc ⚠️  
+├── Secret/api-secrets ✅
+├── Service/database-svc ⚠️
 │   └── Pod/database-pod ❌
 └── PersistentVolumeClaim/api-storage ✅
 
-📊 DOWNSTREAM DEPENDENCIES (what depends on api-pod):  
+📊 DOWNSTREAM DEPENDENCIES (what depends on api-pod):
 api-pod
 ├── Service/api-service ✅
 │   └── Ingress/api-ingress ✅
 └── HorizontalPodAutoscaler/api-hpa ⚠️
 
 🔍 LEGEND:
-✅ Healthy   ⚠️  Warning   ❌ Critical
+✅ Healthy   ⚠️ Warning   ❌ Critical
 
 📊 GRAPH STATISTICS
   Resources: 8
-  Dependencies: 6  
+  Dependencies: 6
   Upstream: 4
   Downstream: 3
-  
+
 ⏱️  Analysis completed in 0.8s
 ```
 
@@ -261,7 +261,6 @@ kubectl-smart top production
 
 # 24-hour forecast  
 kubectl-smart top production --horizon=24
-kubectl-smart top production -h 24
 
 # 7-day forecast (168 hours)
 kubectl-smart top production --horizon=168
@@ -275,40 +274,24 @@ kubectl-smart top production --horizon=1
 📈 PREDICTIVE OUTLOOK: namespace production
 Forecast horizon: 48h
 
-⚠️  CAPACITY WARNINGS
+🔒 CERTIFICATE WARNINGS (2)
+┏━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Resource             ┃ Type       ┃ Expires              ┃ Days Left ┃ Action                     ┃
+┡━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ Secret/prod/api-tls  │ tls_secret │ 2024-01-15T12:00:00Z │ 8         │ Renew certificate          │
+│                      │            │                      │           │ before expiry              │
+│ Secret/prod/internal │ tls_secret │ 2024-01-19T12:00:00Z │ 12        │ Schedule rotation          │
+└──────────────────────┴────────────┴──────────────────────┴───────────┴────────────────────────────┘
+
+⚠️ CAPACITY WARNINGS
   🔴 Memory: 94% utilization predicted in 36h
-    Current: 78% → Projected: 94% 
+    Current: 78% → Projected: 94%
     Affected: api-deployment (3/3 pods)
     Action: Scale horizontally or increase limits
 
-  🟡 CPU: 87% utilization predicted in 42h  
-    Current: 65% → Projected: 87%
-    Affected: worker-deployment (5/5 pods)
-    Action: Consider CPU limits review
-
-🔒 CERTIFICATE WARNINGS  
-  🔴 Expires in 8 days: api-tls-secret
-    Used by: api-ingress, api-service
-    Action: Renew certificate before 2024-01-15
-    
-  🟡 Expires in 12 days: internal-ca-cert
-    Used by: 5 workloads
-    Action: Plan certificate rotation
-
-📊 FORECAST SUMMARY
-  Resources analyzed: 15
-  Capacity risks: 2 critical, 1 warning
-  Certificate risks: 1 critical, 1 warning
-  
-💡 RECOMMENDED ACTIONS
-  1. Scale api-deployment: kubectl scale deploy api-deployment --replicas=5
-  2. Increase worker memory limits in deployment spec
-  3. Renew api-tls-secret: kubectl create secret tls api-tls-secret --cert=...
-  4. Schedule internal-ca-cert renewal
-
 ⏱️  Analysis completed in 1.1s
 
-[Note] Some signals (PVC disk usage, certificate expiry) need kubelet metrics and valid tls.crt. If unavailable, `top` succeeds but shows limited output.
+[Note] Some signals (PVC disk usage, CPU/memory trends) need metrics-server and kubelet metrics. If unavailable, `top` succeeds but shows limited output.
 ```
 
 ### Different Namespaces
@@ -397,7 +380,7 @@ kubectl-smart --debug graph svc my-service --upstream
 kubectl-smart --debug top production
 ```
 
-### Quiet Mode
+### Suppress Output in Scripts
 
 Use shell redirection to suppress output when only exit codes are needed:
 
@@ -440,14 +423,12 @@ kubectl-smart graph svc api --context=production --upstream -n api
 **Step 1: Initial Triage**
 ```bash
 # Quick health check
-# Note: use shell redirection for quiet mode
+# Note: use shell redirection to suppress output
 kubectl-smart diag pod $FAILING_POD -n $NAMESPACE >/dev/null
 exit_code=$?
 
 if [ $exit_code -eq 2 ]; then
     echo "CRITICAL: Immediate attention required"
-elif [ $exit_code -eq 1 ]; then  
-    echo "WARNING: Investigation needed"
 fi
 ```
 
@@ -491,7 +472,7 @@ kubectl-smart graph deploy $APP_NAME -n $NAMESPACE --upstream
 # Overall namespace health
 echo "=== Health Summary ==="
 for resource in $(kubectl get pods -n $NAMESPACE -o name); do
-    kubectl-smart diag $resource -q
+    kubectl-smart diag $resource >/dev/null
     if [ $? -ne 0 ]; then
         echo "⚠️  $resource has issues"
     fi

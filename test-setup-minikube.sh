@@ -434,6 +434,62 @@ spec:
 EOF
 
 ################################################################################
+# 15. Readiness probe failure (predictive/suggestions exercise)
+################################################################################
+cat <<'EOF' | kubectl apply -n ${NAMESPACE} -f -
+apiVersion: v1
+kind: Pod
+metadata:
+  name: readiness-fail
+  labels:
+    scenario: readiness
+spec:
+  containers:
+  - name: app
+    image: nginx
+    readinessProbe:
+      httpGet:
+        path: /not-ready
+        port: 80
+      initialDelaySeconds: 0
+      periodSeconds: 5
+      timeoutSeconds: 1
+EOF
+
+################################################################################
+# 16. DNS failure pod (tries to resolve a bad host)
+################################################################################
+cat <<'EOF' | kubectl apply -n ${NAMESPACE} -f -
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dns-fail
+  labels:
+    scenario: dns
+spec:
+  restartPolicy: Never
+  containers:
+  - name: busy
+    image: busybox
+    command: ["/bin/sh", "-c", "nslookup no.such.host.invalid; sleep 3600"]
+EOF
+
+################################################################################
+# 17. Deny-all NetworkPolicy (blocks traffic)
+################################################################################
+cat <<'EOF' | kubectl apply -n ${NAMESPACE} -f -
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-all
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+EOF
+
+################################################################################
 # 13. CPU / Memory stress – single pod mining /stress
 ################################################################################
 cat <<'EOF' | kubectl apply -n ${NAMESPACE} -f -

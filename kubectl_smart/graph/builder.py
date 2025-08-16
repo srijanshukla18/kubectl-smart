@@ -322,6 +322,12 @@ class GraphBuilder:
         lines = [f"{root_resource.full_name}"]
         
         visited = set()
+        # Circuit breaker on graph size to avoid overwhelming output
+        try:
+            if self.graph.vcount() > 2000 or self.graph.ecount() > 5000:
+                return f"Graph too large to render (vertices={self.graph.vcount()}, edges={self.graph.ecount()}). Try narrowing scope."
+        except Exception:
+            pass
         self._build_ascii_tree(root_uid, direction, lines, "", max_depth, 0, visited)
         
         return '\n'.join(lines)

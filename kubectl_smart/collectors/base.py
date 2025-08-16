@@ -114,45 +114,48 @@ class Collector(ABC):
         
         logger.debug("Running kubectl command", cmd=cmd, timeout=self.timeout_seconds)
         
-        try:
-            async with timeout(self.timeout_seconds):
-                process = await asyncio.create_subprocess_exec(
-                    *cmd,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
-                
-                stdout, stderr = await process.communicate()
-                
-                if process.returncode != 0:
-                    error_msg = stderr.decode() if stderr else "Unknown error"
-                    
-                    # Check for RBAC errors
-                    if any(phrase in error_msg.lower() for phrase in [
-                        'forbidden', 'unauthorized', 'access denied', 
-                        'rbac', 'permission denied'
-                    ]):
-                        raise RBACError(f"RBAC permission denied: {error_msg}")
-                    
-                    raise KubectlError(f"kubectl command failed: {error_msg}")
-                
-                output_str = stdout.decode()
-                
-                # Parse JSON output if requested
-                if output_format == "json" and output_str.strip():
-                    try:
-                        return json.loads(output_str)
-                    except json.JSONDecodeError as e:
-                        raise CollectorError(f"Failed to parse kubectl JSON output: {e}")
-                
-                return {"raw": output_str}
-                
-        except asyncio.TimeoutError:
-            raise TimeoutError(f"kubectl command timed out after {self.timeout_seconds}s")
-        except Exception as e:
-            if isinstance(e, (CollectorError, TimeoutError, RBACError)):
+        # Simple retry with backoff for transient network/permission glitches
+        attempt = 0
+        last_error: Optional[Exception] = None
+        while attempt < 3:
+            try:
+                async with timeout(self.timeout_seconds):
+                    process = await asyncio.create_subprocess_exec(
+                        *cmd,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
+                    )
+                    stdout, stderr = await process.communicate()
+                    if process.returncode != 0:
+                        error_msg = stderr.decode() if stderr else "Unknown error"
+                        lower = error_msg.lower()
+                        if any(phrase in lower for phrase in ['forbidden', 'unauthorized', 'access denied', 'rbac', 'permission denied']):
+                            raise RBACError(f"RBAC permission denied: {error_msg}")
+                        # Retry on transient network/http errors
+                        if any(x in lower for x in ['timeout', 'temporarily unavailable', 'i/o timeout', 'connection refused']):
+                            raise KubectlError(error_msg)
+                        # Non-retryable
+                        raise KubectlError(error_msg)
+                    output_str = stdout.decode()
+                    if output_format == "json" and output_str.strip():
+                        try:
+                            return json.loads(output_str)
+                        except json.JSONDecodeError as e:
+                            raise CollectorError(f"Failed to parse kubectl JSON output: {e}")
+                    return {"raw": output_str}
+            except (KubectlError, asyncio.TimeoutError) as e:
+                last_error = e
+                attempt += 1
+                await asyncio.sleep(0.5 * attempt)
+                continue
+            except (CollectorError, RBACError):
                 raise
-            raise CollectorError(f"Unexpected error running kubectl: {e}")
+        # Exhausted retries
+        if isinstance(last_error, asyncio.TimeoutError):
+            raise TimeoutError(f"kubectl command timed out after {self.timeout_seconds}s (retries exhausted)")
+        if isinstance(last_error, KubectlError):
+            raise last_error
+        raise CollectorError("kubectl command failed (retries exhausted)")
     
     def _create_blob(self, data: any, content_type: str = "application/json") -> RawBlob:
         """Create a RawBlob from collected data"""
@@ -176,12 +179,17 @@ class KubectlGet(Collector):
     async def collect(self, subject: SubjectCtx) -> RawBlob:
         """Collect resource data using kubectl get"""
         try:
-            if subject.name:
-                # Get specific resource
-                args = ['get', self.resource_type, subject.name]
-            else:
-                # Get all resources of this type
+            list_types = {'secrets', 'ingresses', 'persistentvolumeclaims', 'persistentvolumes'}
+            if self.resource_type in list_types:
+                # Namespace/cluster scope listing for forecasting needs
                 args = ['get', self.resource_type]
+            else:
+                if subject.name:
+                    # Get specific resource
+                    args = ['get', self.resource_type, subject.name]
+                else:
+                    # Get all resources of this type
+                    args = ['get', self.resource_type]
             
             data = await self._run_kubectl(args, subject)
             return self._create_blob(data)
@@ -339,6 +347,9 @@ class KubeletMetricsScrape(Collector):
                     raw_text = data.get('raw', '') if isinstance(data, dict) else ''
                     if raw_text:
                         combined.append(f"# node={node_name}\n" + raw_text)
+                except RBACError:
+                    # Skip quietly when forbidden
+                    continue
                 except Exception as e:
                     logger.info("Failed to scrape kubelet metrics for node", node=node_name, error=str(e))
 

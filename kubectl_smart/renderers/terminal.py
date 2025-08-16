@@ -168,10 +168,10 @@ class TerminalRenderer:
                 
                 console.print(table)
             
-            # If no warnings
+            # If no warnings, print honesty hints when data sources might be missing
             if not result.capacity_warnings and not result.certificate_warnings:
                 console.print("\n✅ No capacity or certificate issues predicted")
-                console.print("[dim]Note: Some signals require kubelet metrics and TLS parsing. If unavailable, results may be limited.[/dim]")
+                console.print("[dim]Note: Some signals require metrics-server and kubelet metrics. If unavailable, results may be limited.[/dim]")
             
             console.print(f"\n⏱️  Analysis completed in {result.analysis_duration:.2f}s")
         

@@ -80,6 +80,79 @@ Data sources and behavior:
 - Certificate expiry: parses Secret `tls.crt` via X.509; warns when ≤ 14 days.
 - Read-only; no cluster writes. If a source is unavailable, `top` succeeds but shows no warnings and prints a note.
 
+Requirements and graceful degradation:
+- For full predictions, ensure metrics-server is installed and kubelet metrics accessible via API proxy.
+- If metrics-server is absent or kubelet metrics are blocked by RBAC, `top` still runs and prints a note indicating limited signals.
+
+## ✨ Visual Preview
+
+Below are sample, outputs so you can see how kubectl-smart renders information.
+
+### 🔍 diag (root-cause analysis)
+
+```
+📋 DIAGNOSIS: Pod/production/failing-app-xyz
+Status: CrashLoopBackOff
+
+🔴 ROOT CAUSE
+  💥 CrashLoopBackOff: failing-app-xyz (score: 85.0)
+    Container exits immediately after start, in restart loop
+
+🟡 CONTRIBUTING FACTORS
+  ⚠️ ImagePullBackOff: failing-app-xyz (score: 75.0)
+    Failed to pull image "invalid-registry.com/app:latest"
+
+💡 SUGGESTED ACTIONS
+  1. kubectl logs failing-app-xyz -n production
+  2. docker pull invalid-registry.com/app:latest
+  3. kubectl get secrets -n production
+
+⏱️  Analysis completed in 1.2s
+```
+
+### 🔗 graph (dependency visualization)
+
+```
+🔗 DEPENDENCY GRAPH: Pod/default/api-pod
+
+📊 UPSTREAM DEPENDENCIES (what api-pod depends on):
+api-pod
+├── ConfigMap/api-config ✅
+├── Secret/api-secrets ✅
+├── Service/database-svc ⚠️
+│   └── Pod/database-pod ❌
+└── PersistentVolumeClaim/api-storage ✅
+
+📊 DOWNSTREAM DEPENDENCIES (what depends on api-pod):
+api-pod
+├── Service/api-service ✅
+│   └── Ingress/api-ingress ✅
+└── HorizontalPodAutoscaler/api-hpa ⚠️
+
+🔍 LEGEND:
+✅ Healthy   ⚠️ Warning   ❌ Critical
+
+⏱️  Analysis completed in 0.8s
+```
+
+### 📈 top (predictive outlook)
+
+```
+📈 PREDICTIVE OUTLOOK: namespace production
+Forecast horizon: 48h
+
+🔒 CERTIFICATE WARNINGS (1)
+┏━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Resource         ┃ Type       ┃ Expires              ┃ Days Left ┃ Action               ┃
+┡━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━┩
+│ Secret/prod/tls  │ tls_secret │ 2024-01-15T12:00:00Z │ 8         │ Renew before expiry  │
+└──────────────────┴────────────┴──────────────────────┴───────────┴──────────────────────┘
+
+⏱️  Analysis completed in 1.1s
+
+[Note] Some signals (PVC disk usage, CPU/memory trends) need metrics-server and kubelet metrics. If unavailable, `top` succeeds but shows limited output.
+```
+
 ## 🔧 Architecture
 
 The new implementation follows the exact technical specification:
@@ -104,10 +177,7 @@ kubectl-smart --version
 ## 📚 Documentation
 
 - **`README.md`**: Project overview and quick start
-- **`examples.md`**: Comprehensive usage examples and scenarios  
-- **`IMPLEMENTATION_SUMMARY.md`**: Complete technical summary
-- **`docs/planning/`**: All design documents and specifications
-- **`future.md`**: Future roadmap and enhancement plans
+- **`examples.md`**: Comprehensive usage examples and scenarios
 
 ## 🚀 Ready for Production
 

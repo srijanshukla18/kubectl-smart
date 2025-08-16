@@ -170,10 +170,10 @@ class DiagCommand(BaseCommand):
             renderer = TerminalRenderer(colors_enabled=self.config.colors_enabled)
             output = renderer.render_diagnosis(result)
             
-            # Determine exit code (0 for success, 2 for any issues)
+            # Determine exit code (keep existing semantics: 0 unless issues reach thresholds)
             exit_code = 0
             if result.critical_issues or result.warning_issues:
-                exit_code = 2  # Any issues found, return 2
+                exit_code = 2
             
             logger.debug(f"DiagCommand: critical_issues={result.critical_issues}, warning_issues={result.warning_issues}")
             return CommandResult(
@@ -206,15 +206,39 @@ class DiagCommand(BaseCommand):
         
         # Actions based on root cause
         if root_cause:
-            if 'FailedMount' in root_cause.reason:
+            reason = (root_cause.reason or '').lower()
+            message = (root_cause.message or '').lower()
+
+            if 'failedmount' in reason or 'mount' in message:
                 actions.append("Check PVC status: kubectl get pvc")
                 actions.append("Verify storage class: kubectl get storageclass")
-            elif 'FailedScheduling' in root_cause.reason:
+            elif 'failedscheduling' in reason:
                 actions.append("Check node resources: kubectl top nodes")
                 actions.append("Check pod resource requests vs available capacity")
-            elif 'ImagePullBackOff' in root_cause.reason:
+                if 'taint' in message or 'toleration' in message:
+                    actions.append("Review taints/tolerations: kubectl describe nodes | grep -i taint")
+                    actions.append("Add appropriate tolerations to Pod spec if needed")
+            elif 'imagepullbackoff' in reason or 'errimagepull' in reason:
                 actions.append("Verify image name and tag")
                 actions.append("Check image pull secrets if using private registry")
+            elif 'crashloopbackoff' in reason or 'crash' in message:
+                act = f"Inspect previous logs: kubectl logs {resource.name} -p"
+                if resource.namespace:
+                    act += f" -n {resource.namespace}"
+                actions.append(act)
+                actions.append("Check container start command, readiness of dependencies, and exit code")
+            elif 'readiness' in reason or 'liveness' in reason or 'probe' in message:
+                actions.append("Inspect probe config: initialDelaySeconds, timeoutSeconds, periodSeconds")
+                actions.append("Manually curl the probe endpoint from within the cluster")
+            elif 'dns' in message or 'no such host' in message:
+                actions.append("Check CoreDNS health: kubectl -n kube-system get pods -l k8s-app=kube-dns")
+                actions.append("Verify Service/ClusterIP and pod resolv.conf")
+            elif 'forbidden' in message or 'unauthorized' in message or 'permission' in message or 'rbac' in message:
+                actions.append("Check RBAC: kubectl auth can-i --list")
+                actions.append("Request missing permissions from cluster admin")
+            elif 'networkpolicy' in message or 'deny' in message:
+                actions.append("Review NetworkPolicy rules in namespace")
+                actions.append("Temporarily relax policy to validate connectivity")
         
         # Actions based on resource type
         if resource.kind.value == "Pod":
@@ -337,6 +361,26 @@ class TopCommand(BaseCommand):
             # Collect data for namespace analysis
             collector_names = ['get', 'metrics', 'kubelet']
             all_resources = await self._collect_data(subject, collector_names)
+
+            # Additional targeted gets for resources needed by forecasting
+            # Secrets (for TLS), Ingress (TLS references), PVC/PV (storage mapping)
+            extra_collectors = [
+                collector_registry.create('get', resource_type='secrets'),
+                collector_registry.create('get', resource_type='ingresses'),
+                collector_registry.create('get', resource_type='persistentvolumeclaims'),
+                collector_registry.create('get', resource_type='persistentvolumes'),
+            ]
+            import asyncio as _asyncio
+            extra_blobs = await _asyncio.gather(*[c.collect(subject) for c in extra_collectors], return_exceptions=True)
+            for i, blob in enumerate(extra_blobs):
+                if isinstance(blob, Exception):
+                    logger.info("Optional collector failed", collector=extra_collectors[i].name, error=str(blob))
+                    continue
+                try:
+                    parsed = parser_registry.parse(blob)
+                    all_resources.extend(parsed)
+                except Exception as e:
+                    logger.info("Optional parser failed", collector=extra_collectors[i].name, error=str(e))
             
             # Filter to namespace resources
             namespace_resources = [
