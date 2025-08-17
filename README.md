@@ -19,38 +19,6 @@ kubectl-smart graph pod my-app --upstream       # Dependency visualization
 kubectl-smart top production                    # Predictive outlook
 ```
 
-Installation automatically:
-- Installs `uv` (fast Python package manager) if needed
-- Globally installs kubectl-smart to your PATH  
-- Makes `kubectl-smart` command available everywhere
-
-## 📁 Repository Structure
-
-```
-kubectl-smart/                          # 🧹 Clean main directory
-├── kubectl-smart                       # ✨ Main executable (new modular implementation)
-├── install.sh                          # 📦 Installation script
-├── test.sh                             # 🧪 Comprehensive test suite
-├── pyproject.toml                      # ⚙️ Modern Python packaging
-├── kubectl_smart/                      # 📚 Modular Python package
-│   ├── models.py                       # 🏗️ Core data models
-│   ├── weights.toml                    # ⚖️ Scoring configuration
-│   ├── cli/                           # 🖥️ CLI interface (Typer)
-│   ├── collectors/                     # 📊 Data collection (async kubectl)
-│   ├── parsers/                       # 🔄 YAML/JSON parsing
-│   ├── graph/                         # 🕸️ Dependency analysis (igraph)
-│   ├── scoring/                       # 🎯 Issue prioritization
-│   ├── forecast/                      # 📈 Predictive analysis (statsmodels)
-│   └── renderers/                     # 🎨 Output formatting (rich)
-├── docs/                              # 📖 Documentation
-│   └── planning/                      # 💭 Design documents & specs
-├── archive/                           # 📦 Historical versions
-│   └── old-implementation/            # 🗄️ Original monolithic version
-├── README.md                          # 📋 Project overview
-├── examples.md                        # 📚 Comprehensive usage examples
-└── IMPLEMENTATION_SUMMARY.md          # 📊 Technical implementation summary
-```
-
 ## 🎯 The Three Commands
 
 ### 1. `diag` - Root-cause Analysis
