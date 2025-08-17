@@ -1,6 +1,11 @@
 # Contributing to kubectl-smart
 
-Thanks for your interest in contributing! This project aims to provide a fast, safe, and helpful kubectl plugin for SREs.
+Thanks for your interest in contributing! This project is in **early beta** and aims to provide a helpful kubectl plugin for Kubernetes debugging.
+
+## Project Status
+- 🔬 **Beta/v0.x** - Core functionality works, but expect changes
+- 📈 **Actively seeking feedback** - Real-world usage reports especially valuable
+- 🐛 **Bug reports welcome** - Help us identify edge cases and issues
 
 ## Getting started
 - Python 3.11+
@@ -33,5 +38,11 @@ Thanks for your interest in contributing! This project aims to provide a fast, s
 ## Reporting issues
 - Include CLI command, cluster type, and relevant excerpts of output.
 
-Thanks again for helping improve kubectl-smart!
+## Beta Expectations
+- APIs and CLI interfaces may change between versions
+- Some features are still evolving based on user feedback
+- Documentation may lag behind latest changes
+- Performance characteristics may vary across different cluster sizes
+
+Thanks for helping shape kubectl-smart's development!
 

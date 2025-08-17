@@ -2,7 +2,9 @@
 
 ## 🎯 What is kubectl-smart?
 
-**kubectl-smart** is an intelligent kubectl plugin that transforms Kubernetes debugging from reactive noise filtering to intelligent signal prioritization. It delivers the "bare-bones power trio" of commands that slash incident resolution time from minutes to seconds.
+**kubectl-smart** (beta) is a kubectl plugin that improves Kubernetes debugging by prioritizing issues and providing structured analysis. It provides three focused commands to help reduce incident resolution time.
+
+> ⚠️ **Early feedback welcome** - This project is in active development. Please report issues and share your experience.
 
 **Read-only operations only** - Safe to run in production, never modifies your cluster.
 
@@ -123,11 +125,11 @@ Forecast horizon: 48h
 
 ## 🔧 Architecture
 
-The new implementation follows the exact technical specification:
+The implementation features:
 
 - **CLI Front-End** → **Collectors** → **Parsers** → **Graph Builder** → **Scorers** → **Renderers**
 - **Async performance**: <3s on 2k-resource clusters
-- **Intelligent scoring**: Configurable heuristic weights
+- **Issue scoring**: Configurable heuristic weights for prioritization
 - **Professional output**: Rich terminal formatting
 
 ## 🧪 Testing
@@ -141,6 +143,18 @@ kubectl-smart --help
 kubectl-smart diag --help
 kubectl-smart --version
 ```
+
+## 🔬 Current Status (v0.x Beta)
+
+**Early stage project - feedback welcome!**
+- ✅ Core functionality implemented
+- ✅ Performance targets met (<3s on 2k-resource clusters)
+- ✅ Read-only safety guarantee
+- ✅ Modular, extensible architecture
+- 🔄 Actively seeking user feedback and real-world testing
+- 📋 [Issues and feature requests welcome](https://github.com/srijanshukla18/kubectl-smart/issues)
+
+Help improve kubectl-smart by trying it out and sharing your experience!
 
 ## 📚 Documentation
 

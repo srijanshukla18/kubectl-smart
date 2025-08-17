@@ -1,6 +1,6 @@
 # kubectl-smart Examples - Complete Guide
 
-This guide shows you **everything** kubectl-smart can do with real-world examples and use cases.
+This guide shows kubectl-smart's capabilities with real-world examples and use cases.
 
 ## 🚀 Quick Start
 
@@ -15,7 +15,7 @@ kubectl-smart --version
 
 ## 📋 The Three Core Commands
 
-kubectl-smart provides exactly three commands that cover all Kubernetes debugging scenarios:
+kubectl-smart provides three focused commands for common Kubernetes debugging scenarios:
 
 ### 1. 🔍 `diag` - Root-Cause Analysis
 **When to use**: When something is broken and you need to know why
@@ -647,4 +647,6 @@ kubectl-smart is human-first output. For automation, rely on exit codes (diag) a
 
 ---
 
-This comprehensive guide shows you everything kubectl-smart can do. It's designed to be your intelligent co-pilot for Kubernetes debugging - turning chaos into clarity, and reactive troubleshooting into proactive problem prevention! 🎯
+This guide covers kubectl-smart's current capabilities. The tool is designed to help with Kubernetes debugging by providing structured analysis and issue prioritization. 
+
+> ⚠️ **Beta software** - Please report any issues or share feedback on your experience!
