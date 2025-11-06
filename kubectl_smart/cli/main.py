@@ -103,13 +103,16 @@ def main(
 @app.command()
 def diag(
     resource_type: Annotated[ResourceType, typer.Argument(help="Resource type (pod, deploy, sts, job)")],
-    name: Annotated[str, typer.Argument(help="Resource name")],
+    name: Annotated[Optional[str], typer.Argument(help="Resource name (or use --all)")] = None,
     namespace: Annotated[Optional[str], typer.Option("--namespace", "-n", help="Namespace")] = None,
     context: Annotated[Optional[str], typer.Option("--context", help="kubectl context")] = None,
     output: Annotated[str, typer.Option("--output", "-o", help="Output format (text, json)")] = "text",
+    watch: Annotated[bool, typer.Option("--watch", "-w", help="Watch for changes and re-run diagnosis")] = False,
+    all_resources: Annotated[bool, typer.Option("--all", help="Diagnose all resources of this type")] = False,
+    interval: Annotated[int, typer.Option("--interval", help="Watch interval in seconds")] = 5,
 ):
     """
-    🎯 Root-cause analysis of a single workload
+    🎯 Root-cause analysis of workloads
 
     [bold]Purpose:[/bold] One-shot diagnosis that surfaces root cause and top contributing factors
 
@@ -118,6 +121,7 @@ def diag(
     2. Root Cause — highest-score issue
     3. Contributing Factors — next 2 issues (if ≥50 score)
     4. Suggested Action — kubectl snippets & guidance
+    5. Automated Remediation — safe fixes for common issues
 
     [bold]Exit Codes:[/bold] 0=no issues ≥50 | 1=warnings | 2=critical
 
@@ -125,25 +129,37 @@ def diag(
       kubectl-smart diag pod failing-pod
       kubectl-smart diag deploy my-app -n production
       kubectl-smart diag pod failing-pod -o json  # JSON output for automation
+      kubectl-smart diag pod failing-pod --watch  # Continuous monitoring
+      kubectl-smart diag pod --all -n production  # Diagnose all pods in namespace
     """
 
     # Validate inputs
     try:
         from ..validation import InputValidator
-        InputValidator.validate_resource_name(name)
+
+        # Validate that either name or --all is provided
+        if not name and not all_resources:
+            raise ValueError("Either resource name or --all flag must be provided")
+        if name and all_resources:
+            raise ValueError("Cannot use both resource name and --all flag")
+
+        if name:
+            InputValidator.validate_resource_name(name)
         if namespace:
             InputValidator.validate_namespace(namespace)
         if context:
             InputValidator.validate_context(context)
         if output not in ['text', 'json']:
             raise ValueError(f"Invalid output format '{output}'. Valid options: text, json")
+        if interval < 1:
+            raise ValueError("Watch interval must be >= 1 second")
     except Exception as e:
         typer.echo(f"❌ Input validation error: {e}", err=True)
         raise typer.Exit(2)
 
     # Lazy import models
     from ..models import ResourceKind, SubjectCtx
-    
+
     # Map resource type to ResourceKind
     kind_map = {
         ResourceType.POD: ResourceKind.POD,
@@ -154,8 +170,45 @@ def diag(
         ResourceType.REPLICASET: ResourceKind.REPLICASET,
         ResourceType.DAEMONSET: ResourceKind.DAEMONSET,
     }
-    
-    # Create subject context
+
+    # Handle batch mode (--all)
+    if all_resources:
+        from ..batch import BatchAnalyzer
+
+        analyzer = BatchAnalyzer()
+        resource_kind = kind_map[resource_type]
+
+        try:
+            result = asyncio.run(analyzer.diagnose_all(
+                resource_kind=resource_kind,
+                namespace=namespace,
+                context=context,
+            ))
+
+            # Format batch results
+            if output == 'json':
+                import json
+                typer.echo(json.dumps(result, indent=2))
+            else:
+                typer.echo(f"\n📊 Batch Analysis: {resource_type.value} in namespace '{namespace or 'all'}'")
+                typer.echo("=" * 60)
+                typer.echo(f"Total resources: {result['total']}")
+                typer.echo(f"With issues: {result['with_issues']}")
+                typer.echo(f"Healthy: {result['healthy']}")
+                typer.echo(f"Failed: {result['failed']}")
+
+                if result['issues']:
+                    typer.echo(f"\n🔍 Top Issues:")
+                    for issue in result['issues'][:10]:
+                        typer.echo(f"  • {issue['resource']}: {issue['severity']} - {issue['reason']}")
+
+            raise typer.Exit(0)
+
+        except Exception as e:
+            typer.echo(f"❌ Batch analysis failed: {e}", err=True)
+            raise typer.Exit(2)
+
+    # Create subject context for single resource
     subject = SubjectCtx(
         kind=kind_map[resource_type],
         name=name,
@@ -163,13 +216,34 @@ def diag(
         context=context,
         scope="resource",
     )
-    
+
+    # Handle watch mode (--watch)
+    if watch:
+        from ..watch import ResourceWatcher
+
+        watcher = ResourceWatcher(
+            subject=subject,
+            interval_seconds=interval,
+            output_format=output,
+        )
+
+        try:
+            typer.echo(f"👁️  Watching {subject.full_name} every {interval}s (Ctrl+C to stop)...")
+            asyncio.run(watcher.start())
+        except KeyboardInterrupt:
+            typer.echo("\n⏹️  Watch stopped")
+            raise typer.Exit(0)
+        except Exception as e:
+            typer.echo(f"❌ Watch failed: {e}", err=True)
+            raise typer.Exit(2)
+
+    # Standard single-resource diagnosis
     # Lazy import to avoid slow startup
     from .commands import DiagCommand
-    
+
     # Create and run command
     command = DiagCommand()
-    
+
     try:
         result = asyncio.run(command.execute(subject))
 

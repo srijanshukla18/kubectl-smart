@@ -25,15 +25,32 @@ kubectl-smart top production                    # Predictive outlook
 
 ### 1. `diag` - Root-cause Analysis
 ```bash
+# Single resource diagnosis
 kubectl-smart diag pod failing-pod
 kubectl-smart diag deploy my-app -n production
+
+# Batch operations - analyze all pods in namespace
+kubectl-smart diag pod --all -n production
+
+# Watch mode - continuous monitoring
+kubectl-smart diag pod failing-pod --watch
+
+# JSON output for automation
+kubectl-smart diag pod my-pod -o json
 ```
-**Purpose**: One-shot diagnosis that surfaces root cause and contributing factors
+**Purpose**: One-shot diagnosis that surfaces root cause, contributing factors, and automated remediation suggestions
+
+**New features**:
+- 🔧 **Automated remediation suggestions** with safe, reviewable fix commands
+- 📊 **Batch operations** to diagnose multiple resources at once
+- 👁️ **Watch mode** for continuous monitoring
+- 🤖 **JSON output** for CI/CD integration
 
 ### 2. `graph` - Dependency Visualization
 ```bash
 kubectl-smart graph pod my-app --upstream
 kubectl-smart graph deploy checkout --downstream
+kubectl-smart graph svc api-gateway -o json  # JSON output
 ```
 **Purpose**: ASCII dependency tree for blast-radius analysis
 
@@ -41,6 +58,7 @@ kubectl-smart graph deploy checkout --downstream
 ```bash
 kubectl-smart top production
 kubectl-smart top kube-system --horizon=24
+kubectl-smart top staging -o json  # JSON output
 ```
 **Purpose**: 48h forecast of capacity issues and certificate expiry
 
@@ -160,14 +178,23 @@ kubectl-smart --version
 - **Test coverage**: ~15% (integration tests only, no unit tests yet) - [See TESTING.md](TESTING.md)
 - Early beta stage (v0.1.0) - API may change
 - Limited compared to kubectl+k9s+Lens combined
-- Not suitable for production-critical automation yet
+- Automated remediation is dry-run only (manual review required)
+
+**Recent Improvements** ✨
+- [x] JSON output formats for automation
+- [x] Batch operations (analyze multiple resources with --all)
+- [x] Watch mode for continuous monitoring
+- [x] Automated remediation suggestions
+- [x] Configuration file support
+- [x] Comprehensive logging and health checks
+- [x] Complete documentation (Tutorial, FAQ, Best Practices, Integrations)
 
 **Roadmap** 🔄
-- [ ] Add unit test suite (Target: 50% coverage by Q1 2024)
-- [ ] JSON/YAML output formats for automation
-- [ ] Batch operations (analyze multiple resources)
-- [ ] Issue history tracking
+- [ ] Add unit test suite (Target: 50% coverage by Q2 2025)
+- [ ] Automated remediation with --apply flag (with approval)
+- [ ] Issue history tracking and trend analysis
 - [ ] Security and compliance checks
+- [ ] ML-based anomaly detection
 - [ ] See [IMPROVEMENT_PLAN.md](IMPROVEMENT_PLAN.md) for details
 
 ### Should You Use This?
@@ -266,9 +293,23 @@ kubectl-smart --version
 
 ## 📚 Documentation
 
-- **`README.md`**: Project overview and quick start (you are here)
-- **`examples.md`**: Comprehensive usage examples and scenarios
-- **`TESTING.md`**: ⭐ Honest test coverage status and roadmap
-- **`POSITIONING.md`**: ⭐ Why kubectl-smart vs kubectl/k9s/Lens
-- **`IMPROVEMENT_PLAN.md`**: Development roadmap and future features
-- **`CONTRIBUTING.md`**: How to contribute
+### Core Documentation
+- **[README.md](README.md)**: Project overview and quick start (you are here)
+- **[TESTING.md](TESTING.md)**: ⭐ Honest test coverage status and roadmap
+- **[POSITIONING.md](POSITIONING.md)**: ⭐ Why kubectl-smart vs kubectl/k9s/Lens
+- **[IMPROVEMENT_PLAN.md](IMPROVEMENT_PLAN.md)**: Development roadmap and future features
+- **[CHANGELOG.md](CHANGELOG.md)**: Complete version history
+
+### User Guides (in `docs/`)
+- **[TUTORIAL.md](docs/TUTORIAL.md)**: ⭐ Step-by-step tutorials and real-world scenarios
+- **[TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)**: Common issues and solutions
+- **[FAQ.md](docs/FAQ.md)**: Frequently asked questions
+- **[BEST_PRACTICES.md](docs/BEST_PRACTICES.md)**: Recommended usage patterns
+- **[INTEGRATIONS.md](docs/INTEGRATIONS.md)**: ⭐ CI/CD, monitoring, and alerting integration
+
+### Quick Links
+- 🚀 **New user?** Start with [TUTORIAL.md](docs/TUTORIAL.md)
+- 🔧 **Having issues?** Check [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
+- 🤔 **Questions?** See [FAQ.md](docs/FAQ.md)
+- 🏭 **Production use?** Read [BEST_PRACTICES.md](docs/BEST_PRACTICES.md)
+- 🔗 **CI/CD integration?** See [INTEGRATIONS.md](docs/INTEGRATIONS.md)
