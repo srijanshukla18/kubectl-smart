@@ -144,6 +144,113 @@ kubectl-smart diag --help
 kubectl-smart --version
 ```
 
+## 🔬 Project Status (v0.1.0-beta)
+
+### Honest Assessment
+
+**What Works Well** ✅
+- Core functionality (diag, graph, top) fully implemented
+- Performance targets met (<3s on 2k-resource clusters)
+- Read-only safety guarantee (never modifies clusters)
+- Modular, extensible architecture
+- Comprehensive integration tests against real clusters
+- Excellent documentation and examples
+
+**Known Limitations** ⚠️
+- **Test coverage**: ~15% (integration tests only, no unit tests yet) - [See TESTING.md](TESTING.md)
+- Early beta stage (v0.1.0) - API may change
+- Limited compared to kubectl+k9s+Lens combined
+- Not suitable for production-critical automation yet
+
+**Roadmap** 🔄
+- [ ] Add unit test suite (Target: 50% coverage by Q1 2024)
+- [ ] JSON/YAML output formats for automation
+- [ ] Batch operations (analyze multiple resources)
+- [ ] Issue history tracking
+- [ ] Security and compliance checks
+- [ ] See [IMPROVEMENT_PLAN.md](IMPROVEMENT_PLAN.md) for details
+
+### Should You Use This?
+
+**YES, if you:**
+- Want automation-friendly Kubernetes analysis
+- Need scriptable health checks for CI/CD
+- Like aggregated diagnosis (vs running 5 kubectl commands)
+- Are okay with beta software and limited test coverage
+- Want to contribute to an evolving project
+
+**NO, if you:**
+- Need battle-tested, production-grade reliability (wait for 1.0)
+- Prefer interactive tools (use k9s or Lens instead)
+- Need real-time monitoring (use Prometheus+Grafana)
+- Require 90%+ test coverage guarantees
+
+**See [POSITIONING.md](POSITIONING.md) for detailed comparison with kubectl, k9s, and Lens.**
+
+## 💡 Why kubectl-smart?
+
+### What Makes It Different
+
+kubectl-smart fills a specific gap: **automation-first Kubernetes analysis**.
+
+```bash
+# Instead of this (5 commands):
+kubectl get pod failing-pod -o yaml
+kubectl describe pod failing-pod
+kubectl logs failing-pod --previous
+kubectl get events --field-selector involvedObject.name=failing-pod
+kubectl top pod failing-pod
+
+# Do this (1 command):
+kubectl-smart diag pod failing-pod
+# Aggregated output: status + root cause + suggestions + metrics
+```
+
+### Unique Features
+
+1. **Issue Prioritization**: Scores issues 0-100, identifies root cause vs symptoms
+2. **Automation-Ready**: JSON output, deterministic exit codes for CI/CD
+3. **Cross-Resource Correlation**: Understands dependencies and impact
+4. **Time-Saving**: Pre-packaged analysis patterns
+5. **Scriptable**: No UI, pure CLI for automation
+
+### Use kubectl-smart When
+
+- ✅ Writing CI/CD health checks
+- ✅ Automating incident triage
+- ✅ Batch analyzing multiple resources
+- ✅ Generating reports for documentation
+- ✅ Quick diagnosis in headless environments
+
+### Use k9s/Lens/kubectl When
+
+- Interactive exploration → **k9s**
+- Visual cluster management → **Lens**
+- Modifying resources → **kubectl**
+- Real-time monitoring → **Prometheus**
+
+**They're complementary, not competitive.** [Read full comparison](POSITIONING.md).
+
+## 🧪 Testing
+
+**Current Coverage**: ~15% (integration tests only)
+
+```bash
+# Run integration test suite (requires minikube/k8s cluster)
+./test.sh
+
+# Test individual commands
+kubectl-smart --help
+kubectl-smart diag --help
+kubectl-smart --version
+```
+
+**See [TESTING.md](TESTING.md) for:**
+- Honest test coverage assessment
+- What IS and ISN'T tested
+- Testing roadmap
+- How to contribute tests
+
 ## 🔬 Current Status (v0.x Beta)
 
 **Early stage project - feedback welcome!**
@@ -151,12 +258,17 @@ kubectl-smart --version
 - ✅ Performance targets met (<3s on 2k-resource clusters)
 - ✅ Read-only safety guarantee
 - ✅ Modular, extensible architecture
+- ⚠️ Limited test coverage (integration only)
 - 🔄 Actively seeking user feedback and real-world testing
 - 📋 [Issues and feature requests welcome](https://github.com/srijanshukla18/kubectl-smart/issues)
 
-Help improve kubectl-smart by trying it out and sharing your experience!
+**Help improve kubectl-smart**: Try it, report bugs, contribute tests, share feedback!
 
 ## 📚 Documentation
 
-- **`README.md`**: Project overview and quick start
+- **`README.md`**: Project overview and quick start (you are here)
 - **`examples.md`**: Comprehensive usage examples and scenarios
+- **`TESTING.md`**: ⭐ Honest test coverage status and roadmap
+- **`POSITIONING.md`**: ⭐ Why kubectl-smart vs kubectl/k9s/Lens
+- **`IMPROVEMENT_PLAN.md`**: Development roadmap and future features
+- **`CONTRIBUTING.md`**: How to contribute

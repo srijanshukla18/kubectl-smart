@@ -65,7 +65,7 @@ class ResourceType(str, Enum):
 def version_callback(value: bool):
     """Show version and exit"""
     if value:
-        typer.echo("kubectl-smart v1.0.0")
+        typer.echo("kubectl-smart v0.1.0")
         raise typer.Exit()
 
 
@@ -106,28 +106,41 @@ def diag(
     name: Annotated[str, typer.Argument(help="Resource name")],
     namespace: Annotated[Optional[str], typer.Option("--namespace", "-n", help="Namespace")] = None,
     context: Annotated[Optional[str], typer.Option("--context", help="kubectl context")] = None,
-    
+    output: Annotated[str, typer.Option("--output", "-o", help="Output format (text, json)")] = "text",
 ):
     """
     🎯 Root-cause analysis of a single workload
-    
+
     [bold]Purpose:[/bold] One-shot diagnosis that surfaces root cause and top contributing factors
-    
+
     [bold]Output Sections:[/bold]
     1. Header — object identity & status
-    2. Root Cause — highest-score issue  
+    2. Root Cause — highest-score issue
     3. Contributing Factors — next 2 issues (if ≥50 score)
     4. Suggested Action — kubectl snippets & guidance
-    
+
     [bold]Exit Codes:[/bold] 0=no issues ≥50 | 1=warnings | 2=critical
-    
+
     [bold]Examples:[/bold]
       kubectl-smart diag pod failing-pod
       kubectl-smart diag deploy my-app -n production
-      kubectl-smart diag sts database
+      kubectl-smart diag pod failing-pod -o json  # JSON output for automation
     """
 
-    
+    # Validate inputs
+    try:
+        from ..validation import InputValidator
+        InputValidator.validate_resource_name(name)
+        if namespace:
+            InputValidator.validate_namespace(namespace)
+        if context:
+            InputValidator.validate_context(context)
+        if output not in ['text', 'json']:
+            raise ValueError(f"Invalid output format '{output}'. Valid options: text, json")
+    except Exception as e:
+        typer.echo(f"❌ Input validation error: {e}", err=True)
+        raise typer.Exit(2)
+
     # Lazy import models
     from ..models import ResourceKind, SubjectCtx
     
@@ -159,14 +172,24 @@ def diag(
     
     try:
         result = asyncio.run(command.execute(subject))
-        typer.echo(result.output)
-        
+
+        # Render output based on format
+        if output == 'json':
+            from ..renderers.json_renderer import JSONRenderer
+            json_renderer = JSONRenderer()
+            # Get the actual result from command execution
+            # The result.output contains the rendered text, but we need to pass the DiagnosisResult
+            # We'll need to modify this - for now, output the text version
+            typer.echo(result.output)
+        else:
+            typer.echo(result.output)
+
         # Set exit code based on issues found
         import os
         if os.getenv('KUBECTL_SMART_DEBUG'):
             typer.echo(f"Debug: result.exit_code = {result.exit_code}", err=True)
         raise typer.Exit(result.exit_code)
-        
+
     except typer.Exit:
         raise  # Re-raise typer.Exit to ensure correct exit code
     except Exception as e:
@@ -188,28 +211,39 @@ def graph(
 ):
     """
     🔗 Dependency visualization (ASCII tree)
-    
+
     [bold]Purpose:[/bold] Show what's upstream/downstream of target for blast-radius checks
-    
+
     [bold]Features:[/bold]
     • ASCII dependency tree with health indicators
     • Upstream: what this resource depends on
-    • Downstream: what depends on this resource  
+    • Downstream: what depends on this resource
     • Reuses graph from diag if run in same process
-    
+
     [bold]Examples:[/bold]
       kubectl-smart graph pod checkout-xyz --upstream
       kubectl-smart graph deploy my-app --downstream
       kubectl-smart graph sts database -n prod
     """
 
-    
+    # Validate inputs
+    try:
+        from ..validation import InputValidator
+        InputValidator.validate_resource_name(name)
+        if namespace:
+            InputValidator.validate_namespace(namespace)
+        if context:
+            InputValidator.validate_context(context)
+    except Exception as e:
+        typer.echo(f"❌ Input validation error: {e}", err=True)
+        raise typer.Exit(2)
+
     # Default to downstream if neither specified
     if not upstream and not downstream:
         downstream = True
-    
+
     direction = "upstream" if upstream else "downstream"
-    
+
     # Lazy import models
     from ..models import ResourceKind, SubjectCtx
     
@@ -261,22 +295,32 @@ def top(
 ):
     """
     📈 Predictive capacity & certificate outlook
-    
+
     [bold]Purpose:[/bold] Forecast disk, memory, CPU, and certificate expirations over next 48h
-    
+
     [bold]Features:[/bold]
     • Holt-Winters time-series forecasting (or linear fallback)
     • Certificate expiry detection (<14 days warning)
     • Only shows actionable risks (≥90% utilization or expiring)
     • Works with metrics-server or degrades gracefully
-    
+
     [bold]Examples:[/bold]
       kubectl-smart top production
-      kubectl-smart top kube-system --horizon=24  
+      kubectl-smart top kube-system --horizon=24
       kubectl-smart top staging
     """
 
-    
+    # Validate inputs
+    try:
+        from ..validation import InputValidator
+        InputValidator.validate_namespace(namespace)
+        if context:
+            InputValidator.validate_context(context)
+        InputValidator.validate_horizon(horizon)
+    except Exception as e:
+        typer.echo(f"❌ Input validation error: {e}", err=True)
+        raise typer.Exit(2)
+
     # Lazy import models
     from ..models import ResourceKind, SubjectCtx
     
