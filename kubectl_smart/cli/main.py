@@ -174,13 +174,11 @@ def diag(
         result = asyncio.run(command.execute(subject))
 
         # Render output based on format
-        if output == 'json':
+        if output == 'json' and result.result_data:
             from ..renderers.json_renderer import JSONRenderer
             json_renderer = JSONRenderer()
-            # Get the actual result from command execution
-            # The result.output contains the rendered text, but we need to pass the DiagnosisResult
-            # We'll need to modify this - for now, output the text version
-            typer.echo(result.output)
+            json_output = json_renderer.render_diagnosis(result.result_data)
+            typer.echo(json_output)
         else:
             typer.echo(result.output)
 
@@ -196,7 +194,13 @@ def diag(
         import os
         if os.getenv('KUBECTL_SMART_DEBUG'):
             typer.echo(f"Debug: Exception caught: {e}", err=True)
-        typer.echo(f"Error: {e}", err=True)
+
+        if output == 'json':
+            from ..renderers.json_renderer import JSONRenderer
+            json_renderer = JSONRenderer()
+            typer.echo(json_renderer.render_error(str(e)))
+        else:
+            typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(2)
 
 
@@ -208,6 +212,7 @@ def graph(
     context: Annotated[Optional[str], typer.Option("--context", help="kubectl context")] = None,
     upstream: Annotated[bool, typer.Option("--upstream", help="Show upstream dependencies")] = False,
     downstream: Annotated[bool, typer.Option("--downstream", help="Show downstream dependencies")] = False,
+    output: Annotated[str, typer.Option("--output", "-o", help="Output format (text, json)")] = "text",
 ):
     """
     🔗 Dependency visualization (ASCII tree)
@@ -275,7 +280,16 @@ def graph(
     
     try:
         result = asyncio.run(command.execute(subject, direction))
-        typer.echo(result.output)
+
+        # Render output based on format
+        if output == 'json' and result.result_data:
+            from ..renderers.json_renderer import JSONRenderer
+            json_renderer = JSONRenderer()
+            json_output = json_renderer.render_graph(result.result_data)
+            typer.echo(json_output)
+        else:
+            typer.echo(result.output)
+
         raise typer.Exit(result.exit_code)
     except typer.Exit:
         raise
@@ -283,7 +297,13 @@ def graph(
         import os
         if os.getenv('KUBECTL_SMART_DEBUG'):
             typer.echo(f"Debug: Exception caught: {e}", err=True)
-        typer.echo(f"Error: {e}", err=True)
+
+        if output == 'json':
+            from ..renderers.json_renderer import JSONRenderer
+            json_renderer = JSONRenderer()
+            typer.echo(json_renderer.render_error(str(e)))
+        else:
+            typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(2)
 
 
@@ -291,7 +311,8 @@ def graph(
 def top(
     namespace: Annotated[str, typer.Argument(help="Namespace to analyze")],
     context: Annotated[Optional[str], typer.Option("--context", help="kubectl context")] = None,
-    horizon: Annotated[int, typer.Option("--horizon", "-h", help="Forecast horizon in hours", min=1, max=168)] = 48,
+    horizon: Annotated[int, typer.Option("--horizon", help="Forecast horizon in hours", min=1, max=168)] = 48,
+    output: Annotated[str, typer.Option("--output", "-o", help="Output format (text, json)")] = "text",
 ):
     """
     📈 Predictive capacity & certificate outlook
@@ -341,7 +362,16 @@ def top(
     
     try:
         result = asyncio.run(command.execute(subject))
-        typer.echo(result.output)
+
+        # Render output based on format
+        if output == 'json' and result.result_data:
+            from ..renderers.json_renderer import JSONRenderer
+            json_renderer = JSONRenderer()
+            json_output = json_renderer.render_top(result.result_data)
+            typer.echo(json_output)
+        else:
+            typer.echo(result.output)
+
         raise typer.Exit(result.exit_code)
     except typer.Exit:
         raise
@@ -349,7 +379,13 @@ def top(
         import os
         if os.getenv('KUBECTL_SMART_DEBUG'):
             typer.echo(f"Debug: Exception caught: {e}", err=True)
-        typer.echo(f"Error: {e}", err=True)
+
+        if output == 'json':
+            from ..renderers.json_renderer import JSONRenderer
+            json_renderer = JSONRenderer()
+            typer.echo(json_renderer.render_error(str(e)))
+        else:
+            typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(2)
 
 

@@ -37,6 +37,7 @@ class CommandResult:
     output: str
     exit_code: int = 0
     analysis_duration: float = 0.0
+    result_data: Optional[any] = None  # Raw result object for JSON rendering
 
 
 class BaseCommand:
@@ -177,9 +178,10 @@ class DiagCommand(BaseCommand):
             
             logger.debug(f"DiagCommand: critical_issues={result.critical_issues}, warning_issues={result.warning_issues}")
             return CommandResult(
-                output=output, 
-                exit_code=exit_code, 
-                analysis_duration=analysis_duration
+                output=output,
+                exit_code=exit_code,
+                analysis_duration=analysis_duration,
+                result_data=result  # Include raw result for JSON rendering
             )
             
         except BaseException as e:
@@ -322,8 +324,13 @@ class GraphCommand(BaseCommand):
             # Render output
             renderer = TerminalRenderer(colors_enabled=self.config.colors_enabled)
             output = renderer.render_graph(result)
-            
-            return CommandResult(output=output, exit_code=0, analysis_duration=analysis_duration)
+
+            return CommandResult(
+                output=output,
+                exit_code=0,
+                analysis_duration=analysis_duration,
+                result_data=result  # Include raw result for JSON rendering
+            )
             
         except BaseException as e:
             if isinstance(e, SystemExit):
@@ -415,9 +422,14 @@ class TopCommand(BaseCommand):
             # Render output
             renderer = TerminalRenderer(colors_enabled=self.config.colors_enabled)
             output = renderer.render_top(result)
-            
+
             # Exit code 0 even if warnings exist; top is advisory
-            return CommandResult(output=output, exit_code=0, analysis_duration=analysis_duration)
+            return CommandResult(
+                output=output,
+                exit_code=0,
+                analysis_duration=analysis_duration,
+                result_data=result  # Include raw result for JSON rendering
+            )
             
         except Exception as e:
             analysis_duration = time.time() - start_time
