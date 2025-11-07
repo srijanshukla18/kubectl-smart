@@ -26,6 +26,7 @@ from ..models import (
 )
 from ..parsers.base import registry as parser_registry
 from ..renderers.terminal import TerminalRenderer
+from ..remediation import RemediationEngine
 from ..scoring.engine import ScoringEngine
 
 logger = structlog.get_logger(__name__)
@@ -37,11 +38,12 @@ class CommandResult:
     output: str
     exit_code: int = 0
     analysis_duration: float = 0.0
+    result_data: Optional[any] = None  # Raw result object for JSON rendering
 
 
 class BaseCommand:
     """Base class for all commands"""
-    
+
     def __init__(self, config: Optional[AnalysisConfig] = None):
         self.config = config or AnalysisConfig()
         self.graph_builder = GraphBuilder()
@@ -49,6 +51,7 @@ class BaseCommand:
         self.forecasting_engine = ForecastingEngine(
             forecast_horizon_hours=self.config.forecast_horizon_hours
         )
+        self.remediation_engine = RemediationEngine(dry_run=True)
     
     async def _collect_data(self, subject: SubjectCtx, collector_names: List[str]) -> List[ResourceRecord]:
         """Collect data using multiple collectors concurrently"""
@@ -149,12 +152,20 @@ class DiagCommand(BaseCommand):
             # Identify root cause and contributing factors
             root_cause = self.scoring_engine.get_root_cause(target_issues)
             contributing_factors = self.scoring_engine.get_contributing_factors(target_issues, root_cause)
-            
+
             # Generate suggested actions
             suggested_actions = self._generate_suggested_actions(target_resource, root_cause, contributing_factors)
-            
+
+            # Generate automated remediations
+            remediations = self.remediation_engine.generate_remediations(target_resource, target_issues)
+
+            # Add remediation suggestions to actions if available
+            if remediations:
+                remediation_text = self.remediation_engine.format_remediations(remediations)
+                # Store remediations for display (will be shown in terminal renderer)
+
             analysis_duration = time.time() - start_time
-            
+
             # Create result
             result = DiagnosisResult(
                 subject=subject,
@@ -165,6 +176,8 @@ class DiagCommand(BaseCommand):
                 suggested_actions=suggested_actions,
                 analysis_duration=analysis_duration,
             )
+            # Attach remediations to result for rendering
+            result.remediations = remediations
             
             # Render output
             renderer = TerminalRenderer(colors_enabled=self.config.colors_enabled)
@@ -177,9 +190,10 @@ class DiagCommand(BaseCommand):
             
             logger.debug(f"DiagCommand: critical_issues={result.critical_issues}, warning_issues={result.warning_issues}")
             return CommandResult(
-                output=output, 
-                exit_code=exit_code, 
-                analysis_duration=analysis_duration
+                output=output,
+                exit_code=exit_code,
+                analysis_duration=analysis_duration,
+                result_data=result  # Include raw result for JSON rendering
             )
             
         except BaseException as e:
@@ -322,8 +336,13 @@ class GraphCommand(BaseCommand):
             # Render output
             renderer = TerminalRenderer(colors_enabled=self.config.colors_enabled)
             output = renderer.render_graph(result)
-            
-            return CommandResult(output=output, exit_code=0, analysis_duration=analysis_duration)
+
+            return CommandResult(
+                output=output,
+                exit_code=0,
+                analysis_duration=analysis_duration,
+                result_data=result  # Include raw result for JSON rendering
+            )
             
         except BaseException as e:
             if isinstance(e, SystemExit):
@@ -415,9 +434,14 @@ class TopCommand(BaseCommand):
             # Render output
             renderer = TerminalRenderer(colors_enabled=self.config.colors_enabled)
             output = renderer.render_top(result)
-            
+
             # Exit code 0 even if warnings exist; top is advisory
-            return CommandResult(output=output, exit_code=0, analysis_duration=analysis_duration)
+            return CommandResult(
+                output=output,
+                exit_code=0,
+                analysis_duration=analysis_duration,
+                result_data=result  # Include raw result for JSON rendering
+            )
             
         except Exception as e:
             analysis_duration = time.time() - start_time

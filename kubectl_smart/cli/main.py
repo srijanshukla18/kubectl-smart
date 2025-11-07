@@ -65,7 +65,7 @@ class ResourceType(str, Enum):
 def version_callback(value: bool):
     """Show version and exit"""
     if value:
-        typer.echo("kubectl-smart v1.0.0")
+        typer.echo("kubectl-smart v0.1.0")
         raise typer.Exit()
 
 
@@ -103,34 +103,63 @@ def main(
 @app.command()
 def diag(
     resource_type: Annotated[ResourceType, typer.Argument(help="Resource type (pod, deploy, sts, job)")],
-    name: Annotated[str, typer.Argument(help="Resource name")],
+    name: Annotated[Optional[str], typer.Argument(help="Resource name (or use --all)")] = None,
     namespace: Annotated[Optional[str], typer.Option("--namespace", "-n", help="Namespace")] = None,
     context: Annotated[Optional[str], typer.Option("--context", help="kubectl context")] = None,
-    
+    output: Annotated[str, typer.Option("--output", "-o", help="Output format (text, json)")] = "text",
+    watch: Annotated[bool, typer.Option("--watch", "-w", help="Watch for changes and re-run diagnosis")] = False,
+    all_resources: Annotated[bool, typer.Option("--all", help="Diagnose all resources of this type")] = False,
+    interval: Annotated[int, typer.Option("--interval", help="Watch interval in seconds")] = 5,
 ):
     """
-    🎯 Root-cause analysis of a single workload
-    
+    🎯 Root-cause analysis of workloads
+
     [bold]Purpose:[/bold] One-shot diagnosis that surfaces root cause and top contributing factors
-    
+
     [bold]Output Sections:[/bold]
     1. Header — object identity & status
-    2. Root Cause — highest-score issue  
+    2. Root Cause — highest-score issue
     3. Contributing Factors — next 2 issues (if ≥50 score)
     4. Suggested Action — kubectl snippets & guidance
-    
+    5. Automated Remediation — safe fixes for common issues
+
     [bold]Exit Codes:[/bold] 0=no issues ≥50 | 1=warnings | 2=critical
-    
+
     [bold]Examples:[/bold]
       kubectl-smart diag pod failing-pod
       kubectl-smart diag deploy my-app -n production
-      kubectl-smart diag sts database
+      kubectl-smart diag pod failing-pod -o json  # JSON output for automation
+      kubectl-smart diag pod failing-pod --watch  # Continuous monitoring
+      kubectl-smart diag pod --all -n production  # Diagnose all pods in namespace
     """
 
-    
+    # Validate inputs
+    try:
+        from ..validation import InputValidator
+
+        # Validate that either name or --all is provided
+        if not name and not all_resources:
+            raise ValueError("Either resource name or --all flag must be provided")
+        if name and all_resources:
+            raise ValueError("Cannot use both resource name and --all flag")
+
+        if name:
+            InputValidator.validate_resource_name(name)
+        if namespace:
+            InputValidator.validate_namespace(namespace)
+        if context:
+            InputValidator.validate_context(context)
+        if output not in ['text', 'json']:
+            raise ValueError(f"Invalid output format '{output}'. Valid options: text, json")
+        if interval < 1:
+            raise ValueError("Watch interval must be >= 1 second")
+    except Exception as e:
+        typer.echo(f"❌ Input validation error: {e}", err=True)
+        raise typer.Exit(2)
+
     # Lazy import models
     from ..models import ResourceKind, SubjectCtx
-    
+
     # Map resource type to ResourceKind
     kind_map = {
         ResourceType.POD: ResourceKind.POD,
@@ -141,8 +170,45 @@ def diag(
         ResourceType.REPLICASET: ResourceKind.REPLICASET,
         ResourceType.DAEMONSET: ResourceKind.DAEMONSET,
     }
-    
-    # Create subject context
+
+    # Handle batch mode (--all)
+    if all_resources:
+        from ..batch import BatchAnalyzer
+
+        analyzer = BatchAnalyzer()
+        resource_kind = kind_map[resource_type]
+
+        try:
+            result = asyncio.run(analyzer.diagnose_all(
+                resource_kind=resource_kind,
+                namespace=namespace,
+                context=context,
+            ))
+
+            # Format batch results
+            if output == 'json':
+                import json
+                typer.echo(json.dumps(result, indent=2))
+            else:
+                typer.echo(f"\n📊 Batch Analysis: {resource_type.value} in namespace '{namespace or 'all'}'")
+                typer.echo("=" * 60)
+                typer.echo(f"Total resources: {result['total']}")
+                typer.echo(f"With issues: {result['with_issues']}")
+                typer.echo(f"Healthy: {result['healthy']}")
+                typer.echo(f"Failed: {result['failed']}")
+
+                if result['issues']:
+                    typer.echo(f"\n🔍 Top Issues:")
+                    for issue in result['issues'][:10]:
+                        typer.echo(f"  • {issue['resource']}: {issue['severity']} - {issue['reason']}")
+
+            raise typer.Exit(0)
+
+        except Exception as e:
+            typer.echo(f"❌ Batch analysis failed: {e}", err=True)
+            raise typer.Exit(2)
+
+    # Create subject context for single resource
     subject = SubjectCtx(
         kind=kind_map[resource_type],
         name=name,
@@ -150,30 +216,65 @@ def diag(
         context=context,
         scope="resource",
     )
-    
+
+    # Handle watch mode (--watch)
+    if watch:
+        from ..watch import ResourceWatcher
+
+        watcher = ResourceWatcher(
+            subject=subject,
+            interval_seconds=interval,
+            output_format=output,
+        )
+
+        try:
+            typer.echo(f"👁️  Watching {subject.full_name} every {interval}s (Ctrl+C to stop)...")
+            asyncio.run(watcher.start())
+        except KeyboardInterrupt:
+            typer.echo("\n⏹️  Watch stopped")
+            raise typer.Exit(0)
+        except Exception as e:
+            typer.echo(f"❌ Watch failed: {e}", err=True)
+            raise typer.Exit(2)
+
+    # Standard single-resource diagnosis
     # Lazy import to avoid slow startup
     from .commands import DiagCommand
-    
+
     # Create and run command
     command = DiagCommand()
-    
+
     try:
         result = asyncio.run(command.execute(subject))
-        typer.echo(result.output)
-        
+
+        # Render output based on format
+        if output == 'json' and result.result_data:
+            from ..renderers.json_renderer import JSONRenderer
+            json_renderer = JSONRenderer()
+            json_output = json_renderer.render_diagnosis(result.result_data)
+            typer.echo(json_output)
+        else:
+            typer.echo(result.output)
+
         # Set exit code based on issues found
         import os
         if os.getenv('KUBECTL_SMART_DEBUG'):
             typer.echo(f"Debug: result.exit_code = {result.exit_code}", err=True)
         raise typer.Exit(result.exit_code)
-        
+
     except typer.Exit:
         raise  # Re-raise typer.Exit to ensure correct exit code
     except Exception as e:
         import os
         if os.getenv('KUBECTL_SMART_DEBUG'):
             typer.echo(f"Debug: Exception caught: {e}", err=True)
-        typer.echo(f"Error: {e}", err=True)
+
+        if output == 'json':
+            from ..renderers.json_renderer import JSONRenderer
+            json_renderer = JSONRenderer()
+            typer.echo(json_renderer.render_error(str(e)))
+        else:
+            typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(2)
 
 
@@ -185,31 +286,43 @@ def graph(
     context: Annotated[Optional[str], typer.Option("--context", help="kubectl context")] = None,
     upstream: Annotated[bool, typer.Option("--upstream", help="Show upstream dependencies")] = False,
     downstream: Annotated[bool, typer.Option("--downstream", help="Show downstream dependencies")] = False,
+    output: Annotated[str, typer.Option("--output", "-o", help="Output format (text, json)")] = "text",
 ):
     """
     🔗 Dependency visualization (ASCII tree)
-    
+
     [bold]Purpose:[/bold] Show what's upstream/downstream of target for blast-radius checks
-    
+
     [bold]Features:[/bold]
     • ASCII dependency tree with health indicators
     • Upstream: what this resource depends on
-    • Downstream: what depends on this resource  
+    • Downstream: what depends on this resource
     • Reuses graph from diag if run in same process
-    
+
     [bold]Examples:[/bold]
       kubectl-smart graph pod checkout-xyz --upstream
       kubectl-smart graph deploy my-app --downstream
       kubectl-smart graph sts database -n prod
     """
 
-    
+    # Validate inputs
+    try:
+        from ..validation import InputValidator
+        InputValidator.validate_resource_name(name)
+        if namespace:
+            InputValidator.validate_namespace(namespace)
+        if context:
+            InputValidator.validate_context(context)
+    except Exception as e:
+        typer.echo(f"❌ Input validation error: {e}", err=True)
+        raise typer.Exit(2)
+
     # Default to downstream if neither specified
     if not upstream and not downstream:
         downstream = True
-    
+
     direction = "upstream" if upstream else "downstream"
-    
+
     # Lazy import models
     from ..models import ResourceKind, SubjectCtx
     
@@ -241,7 +354,16 @@ def graph(
     
     try:
         result = asyncio.run(command.execute(subject, direction))
-        typer.echo(result.output)
+
+        # Render output based on format
+        if output == 'json' and result.result_data:
+            from ..renderers.json_renderer import JSONRenderer
+            json_renderer = JSONRenderer()
+            json_output = json_renderer.render_graph(result.result_data)
+            typer.echo(json_output)
+        else:
+            typer.echo(result.output)
+
         raise typer.Exit(result.exit_code)
     except typer.Exit:
         raise
@@ -249,7 +371,13 @@ def graph(
         import os
         if os.getenv('KUBECTL_SMART_DEBUG'):
             typer.echo(f"Debug: Exception caught: {e}", err=True)
-        typer.echo(f"Error: {e}", err=True)
+
+        if output == 'json':
+            from ..renderers.json_renderer import JSONRenderer
+            json_renderer = JSONRenderer()
+            typer.echo(json_renderer.render_error(str(e)))
+        else:
+            typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(2)
 
 
@@ -257,26 +385,37 @@ def graph(
 def top(
     namespace: Annotated[str, typer.Argument(help="Namespace to analyze")],
     context: Annotated[Optional[str], typer.Option("--context", help="kubectl context")] = None,
-    horizon: Annotated[int, typer.Option("--horizon", "-h", help="Forecast horizon in hours", min=1, max=168)] = 48,
+    horizon: Annotated[int, typer.Option("--horizon", help="Forecast horizon in hours", min=1, max=168)] = 48,
+    output: Annotated[str, typer.Option("--output", "-o", help="Output format (text, json)")] = "text",
 ):
     """
     📈 Predictive capacity & certificate outlook
-    
+
     [bold]Purpose:[/bold] Forecast disk, memory, CPU, and certificate expirations over next 48h
-    
+
     [bold]Features:[/bold]
     • Holt-Winters time-series forecasting (or linear fallback)
     • Certificate expiry detection (<14 days warning)
     • Only shows actionable risks (≥90% utilization or expiring)
     • Works with metrics-server or degrades gracefully
-    
+
     [bold]Examples:[/bold]
       kubectl-smart top production
-      kubectl-smart top kube-system --horizon=24  
+      kubectl-smart top kube-system --horizon=24
       kubectl-smart top staging
     """
 
-    
+    # Validate inputs
+    try:
+        from ..validation import InputValidator
+        InputValidator.validate_namespace(namespace)
+        if context:
+            InputValidator.validate_context(context)
+        InputValidator.validate_horizon(horizon)
+    except Exception as e:
+        typer.echo(f"❌ Input validation error: {e}", err=True)
+        raise typer.Exit(2)
+
     # Lazy import models
     from ..models import ResourceKind, SubjectCtx
     
@@ -297,7 +436,16 @@ def top(
     
     try:
         result = asyncio.run(command.execute(subject))
-        typer.echo(result.output)
+
+        # Render output based on format
+        if output == 'json' and result.result_data:
+            from ..renderers.json_renderer import JSONRenderer
+            json_renderer = JSONRenderer()
+            json_output = json_renderer.render_top(result.result_data)
+            typer.echo(json_output)
+        else:
+            typer.echo(result.output)
+
         raise typer.Exit(result.exit_code)
     except typer.Exit:
         raise
@@ -305,7 +453,13 @@ def top(
         import os
         if os.getenv('KUBECTL_SMART_DEBUG'):
             typer.echo(f"Debug: Exception caught: {e}", err=True)
-        typer.echo(f"Error: {e}", err=True)
+
+        if output == 'json':
+            from ..renderers.json_renderer import JSONRenderer
+            json_renderer = JSONRenderer()
+            typer.echo(json_renderer.render_error(str(e)))
+        else:
+            typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(2)
 
 
