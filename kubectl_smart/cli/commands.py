@@ -137,6 +137,9 @@ class DiagCommand(BaseCommand):
             # Extract events related to this resource
             events = [r for r in all_resources if r.kind.value == "Event"]
             
+            # Sort events by creation_timestamp descending (newest first)
+            events.sort(key=lambda x: x.creation_timestamp.timestamp() if x.creation_timestamp else 0, reverse=True)
+            
             # Analyze issues
             issues = self.scoring_engine.analyze_issues(all_resources, events, self.graph_builder)
             
@@ -163,6 +166,7 @@ class DiagCommand(BaseCommand):
                 root_cause=root_cause,
                 contributing_factors=contributing_factors,
                 suggested_actions=suggested_actions,
+                recent_events=events[:5], # Top 5 recent events
                 analysis_duration=analysis_duration,
             )
             

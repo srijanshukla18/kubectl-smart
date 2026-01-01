@@ -78,6 +78,30 @@ class TerminalRenderer:
                 for i, factor in enumerate(result.contributing_factors, 1):
                     console.print(f"  {i}. {factor.title} (score: {factor.score:.1f})")
                     console.print(f"     {factor.description}")
+
+            # Recent Events - New Section
+            if result.recent_events:
+                console.print(f"\n📅 RECENT EVENTS")
+                table = Table(show_header=True, header_style="bold magenta", box=None)
+                table.add_column("Time", style="cyan")
+                table.add_column("Type", style="white")
+                table.add_column("Reason", style="yellow")
+                table.add_column("Message", style="white")
+                
+                for event in result.recent_events:
+                    ts = event.properties.get('lastTimestamp') or event.properties.get('firstTimestamp') or "Unknown"
+                    if 'T' in ts: ts = ts.split('T')[1].replace('Z', '')[:8] # formatting hack
+                    
+                    e_type = event.properties.get('type', 'Normal')
+                    type_style = "red" if e_type == 'Warning' else "green"
+                    
+                    table.add_row(
+                        ts,
+                        f"[{type_style}]{e_type}[/{type_style}]",
+                        event.properties.get('reason', 'Unknown'),
+                        event.properties.get('message', '')
+                    )
+                console.print(table)
             
             # Suggested Actions
             if result.suggested_actions:
