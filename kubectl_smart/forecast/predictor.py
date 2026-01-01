@@ -226,7 +226,7 @@ class ForecastingEngine:
         return os.path.join(base, "metrics.json")
 
     def _append_pvc_utilization_sample(self, namespace: str, pvc: str, utilization: float) -> None:
-        import json, os
+        import json, os, tempfile
         path = self._cache_path()
         data = {"pvc": {}}
         if os.path.exists(path):
@@ -242,10 +242,17 @@ class ForecastingEngine:
         # keep last 50
         if len(series) > 50:
             series[:] = series[-50:]
-        tmp = f"{path}.tmp"
-        with open(tmp, "w") as f:
-            json.dump(data, f)
-        os.replace(tmp, path)
+
+        tmp_dir = os.path.dirname(path) or "."
+        with tempfile.NamedTemporaryFile("w", delete=False, dir=tmp_dir) as tf:
+            json.dump(data, tf)
+            tmp_path = tf.name
+        # Tighten permissions to owner-only
+        try:
+            os.chmod(tmp_path, 0o600)
+        except Exception:
+            pass
+        os.replace(tmp_path, path)
 
     def _load_pvc_utilization_series(self, namespace: str, pvc: str) -> List[Tuple[datetime, float]]:
         import json, os
@@ -295,6 +302,8 @@ class ForecastingEngine:
         
         # Check if it has certificate data
         data = secret.get_property('data', {})
+        # Explicitly ignore private keys to reduce exposure risk
+        data = {k: v for k, v in data.items() if k in ('tls.crt', 'cert')}
         if 'tls.crt' not in data and 'cert' not in data:
             return warnings
         

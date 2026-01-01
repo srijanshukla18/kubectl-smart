@@ -8,6 +8,7 @@ in an async, time-bounded manner as specified in the technical requirements.
 import asyncio
 import json
 import subprocess
+import re
 from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Dict, List, Optional
@@ -107,12 +108,26 @@ class Collector(ABC):
             KubectlError: When kubectl command fails
             RBACError: When RBAC permissions are insufficient
         """
+        # Defensive validation for namespace/context to avoid malformed argv
+        dns_label = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
+        context_re = re.compile(r"^[A-Za-z0-9_.-]+$")
+        if subject.namespace and (len(subject.namespace) > 63 or not dns_label.fullmatch(subject.namespace)):
+            raise CollectorError("Invalid namespace supplied")
+        if subject.context and not context_re.fullmatch(subject.context):
+            raise CollectorError("Invalid context supplied")
+
         cmd = [self.kubectl_path] + args + subject.kubectl_args()
         
         if output_format:
             cmd.extend(['-o', output_format])
         
-        logger.debug("Running kubectl command", cmd=cmd, timeout=self.timeout_seconds)
+        logger.debug(
+            "Running kubectl command",
+            verb=args[:2],
+            has_namespace=bool(subject.namespace),
+            has_context=bool(subject.context),
+            timeout=self.timeout_seconds,
+        )
         
         # Simple retry with backoff for transient network/permission glitches
         attempt = 0

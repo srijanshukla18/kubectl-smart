@@ -17,6 +17,8 @@ import structlog
 import typer
 from typing_extensions import Annotated
 
+import re
+
 # Lazy imports to speed up --help
 
 def _configure_logging():
@@ -58,6 +60,29 @@ class ResourceType(str, Enum):
     REPLICASET = "rs"
     DAEMONSET = "ds"
 
+
+NAME_PATTERN = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
+CONTEXT_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+$")
+
+
+def _validate_namespace(namespace: Optional[str]) -> None:
+    if namespace is None:
+        return
+    if len(namespace) > 63 or not NAME_PATTERN.fullmatch(namespace):
+        raise typer.BadParameter("Namespace must match DNS-1123 label (lowercase alphanumerics plus '-') and be ≤63 chars.")
+
+
+def _validate_resource_name(name: str) -> None:
+    if len(name) > 253 or not NAME_PATTERN.fullmatch(name.split('.')[0]):
+        # Allow for pod.template hash with dots by checking prefix, but still guard obvious bad input
+        raise typer.BadParameter("Resource name must match Kubernetes DNS-1123 label (lowercase alphanumerics plus '-').")
+
+
+def _validate_context(context: Optional[str]) -> None:
+    if context is None:
+        return
+    if not CONTEXT_PATTERN.fullmatch(context):
+        raise typer.BadParameter("Context may only contain letters, numbers, underscore, dot, or dash.")
 
 
 
@@ -126,7 +151,9 @@ def diag(
       kubectl-smart diag deploy my-app -n production
       kubectl-smart diag sts database
     """
-
+    _validate_resource_name(name)
+    _validate_namespace(namespace)
+    _validate_context(context)
     
     # Lazy import models
     from ..models import ResourceKind, SubjectCtx
@@ -202,7 +229,9 @@ def graph(
       kubectl-smart graph deploy my-app --downstream
       kubectl-smart graph sts database -n prod
     """
-
+    _validate_resource_name(name)
+    _validate_namespace(namespace)
+    _validate_context(context)
     
     # Default to downstream if neither specified
     if not upstream and not downstream:
@@ -275,7 +304,8 @@ def top(
       kubectl-smart top kube-system --horizon=24  
       kubectl-smart top staging
     """
-
+    _validate_namespace(namespace)
+    _validate_context(context)
     
     # Lazy import models
     from ..models import ResourceKind, SubjectCtx
