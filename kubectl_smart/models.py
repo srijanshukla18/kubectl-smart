@@ -44,6 +44,7 @@ class ResourceKind(str, Enum):
     VPA = "VerticalPodAutoscaler"
     ENDPOINTS = "Endpoints"
     EVENT = "Event"
+    LOGANALYSIS = "LogAnalysis"
 
 
 class IssueSeverity(str, Enum):
@@ -199,6 +200,7 @@ class DiagnosisResult(BaseModel):
     root_cause: Optional[Issue] = None
     contributing_factors: List[Issue] = Field(default_factory=list)
     suggested_actions: List[str] = Field(default_factory=list)
+    recent_events: List[ResourceRecord] = Field(default_factory=list)
     analysis_duration: float = Field(..., description="Analysis time in seconds")
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     

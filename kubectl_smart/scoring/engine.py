@@ -7,6 +7,7 @@ requirements, with configurable weights and deterministic output.
 
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -44,12 +45,18 @@ class ScoringEngine:
         
     def _load_weights(self, weights_file: Optional[str] = None) -> Dict:
         """Load scoring weights from TOML file"""
+        package_dir = Path(__file__).parent.parent.resolve()
         if not weights_file:
             # Look for weights.toml in package directory
-            package_dir = Path(__file__).parent.parent
             weights_file = package_dir / "weights.toml"
         
-        weights_path = Path(weights_file)
+        weights_path = Path(weights_file).resolve()
+        # Prevent path traversal / arbitrary file reads
+        try:
+            weights_path.relative_to(package_dir)
+        except Exception:
+            logger.warning("Weights file rejected: outside package directory", path=weights_path)
+            return self._get_default_weights()
         
         if not weights_path.exists():
             logger.warning("Weights file not found, using defaults", path=weights_path)
@@ -295,6 +302,35 @@ class ScoringEngine:
         
         return issue
     
+    def create_issue_from_logs(
+        self,
+        log_record: ResourceRecord,
+        target_resource: ResourceRecord
+    ) -> Optional[Issue]:
+        """Create an Issue from log analysis"""
+        errors = log_record.properties.get('errors', [])
+        if not errors:
+            return None
+            
+        # Create a summary message
+        error_count = len(errors)
+        last_error = errors[-1]
+        if len(last_error) > 80:
+            last_error = last_error[:77] + "..."
+            
+        return Issue(
+            resource_uid=target_resource.uid,
+            title=f"Log Errors: Found {error_count} error(s)",
+            description=f"Log analysis detected {error_count} unique error patterns. Recent: {last_error}",
+            reason="LogFailure",
+            message="\n".join([f"- {e}" for e in errors]),
+            timestamp=datetime.utcnow(),
+            critical_path=True, # Logs are usually critical if we are diagnosing
+            severity=IssueSeverity.WARNING, # Will be rescored
+            score=85.0, # High base score for log errors
+            suggested_actions=["Review full logs for context", "Check application configuration"]
+        )
+
     def _get_age_multiplier(self, timestamp) -> float:
         """Get age-based score multiplier"""
         if not timestamp:
@@ -346,6 +382,19 @@ class ScoringEngine:
         issues = []
         resource_map = {r.uid: r for r in resources}
         
+        # Identify the primary target resource (heuristic: usually the one being diagnosed)
+        # In a list of resources, we often want to attach log issues to the "subject".
+        # For now, we'll attach log issues to the first Pod found, or if none, leave generic.
+        # A better way is if the caller passed the target, but we are inside the engine.
+        target_pod = next((r for r in resources if r.kind == ResourceKind.POD), None)
+        
+        # Process LogAnalysis records
+        for resource in resources:
+            if resource.kind == ResourceKind.LOGANALYSIS and target_pod:
+                log_issue = self.create_issue_from_logs(resource, target_pod)
+                if log_issue:
+                    issues.append(log_issue)
+
         # Process events
         for event in events:
             if event.kind != ResourceKind.EVENT:

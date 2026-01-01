@@ -17,6 +17,8 @@ from ..models import RawBlob, ResourceKind, ResourceRecord
 
 logger = structlog.get_logger(__name__)
 
+MAX_JSON_BYTES = 5 * 1024 * 1024  # 5MB safety cap to avoid unbounded parsing
+
 
 class ParserError(Exception):
     """Base exception for parser errors"""
@@ -95,6 +97,9 @@ class KubernetesResourceParser(Parser):
         try:
             data = blob.data
             if isinstance(data, str):
+                if len(data.encode('utf-8')) > MAX_JSON_BYTES:
+                    logger.warning("Skipping oversized JSON blob", size=len(data))
+                    return []
                 data = json.loads(data)
             
             if not isinstance(data, dict):
@@ -230,6 +235,9 @@ class EventParser(Parser):
         try:
             data = blob.data
             if isinstance(data, str):
+                if len(data.encode('utf-8')) > MAX_JSON_BYTES:
+                    logger.warning("Skipping oversized events blob", size=len(data))
+                    return []
                 data = json.loads(data)
             
             if not isinstance(data, dict):
@@ -305,6 +313,68 @@ class TextParser(Parser):
         # Text parsers typically don't create ResourceRecord objects
         # but may extract information for other purposes
         return []
+
+
+class LogParser(Parser):
+    """Parser for container logs to extract errors and patterns"""
+    
+    def feed(self, blob: RawBlob) -> List[ResourceRecord]:
+        """Parse log text into LogAnalysis resource"""
+        if blob.content_type != "text/plain":
+            return []
+            
+        try:
+            data = blob.data
+            if isinstance(data, dict):
+                data = data.get('raw', '')
+            
+            if not isinstance(data, str) or not data.strip():
+                return []
+                
+            # Pattern matching for common errors
+            lines = data.splitlines()
+            unique_errors = []
+            seen_errors = set()
+            
+            # Simple heuristic for error lines
+            error_patterns = ['error', 'exception', 'panic', 'fatal', 'fail', 'crash']
+            ignore_patterns = ['deprecated', 'warning']
+            
+            for line in lines:
+                lower_line = line.lower()
+                if any(p in lower_line for p in error_patterns) and not any(i in lower_line for i in ignore_patterns):
+                    # Clean up timestamp if present at start of line (basic heuristic)
+                    clean_line = line
+                    if len(line) > 20 and line[19] in ['T', ' ']: # ISO-ish check
+                         clean_line = line[20:].strip()
+                    
+                    if clean_line not in seen_errors:
+                        unique_errors.append(line.strip())
+                        seen_errors.add(clean_line)
+                        
+            if not unique_errors:
+                return []
+                
+            # Limit to top 5 unique errors to avoid noise
+            unique_errors = unique_errors[-5:]
+            
+            properties = {
+                'errors': unique_errors,
+                'log_count': len(lines),
+                'error_count': len(unique_errors)
+            }
+            
+            return [ResourceRecord(
+                kind=ResourceKind.LOGANALYSIS,
+                name="log-analysis",
+                uid=f"log-{datetime.utcnow().timestamp()}",
+                properties=properties,
+                status="Analyzed"
+            )]
+            
+        except Exception as e:
+            logger.warning("Failed to parse logs", error=str(e))
+            return []
 
 
 class MetricsParser(Parser):
@@ -463,6 +533,7 @@ class ParserRegistry:
             'kubernetes': KubernetesResourceParser(),
             'events': EventParser(),
             'text': TextParser(),
+            'logs': LogParser(),
             'metrics': MetricsParser(),
             'prom': PrometheusTextParser(),
         })
@@ -475,6 +546,8 @@ class ParserRegistry:
         """Get appropriate parser for a blob"""
         if blob.source == "kubectl_events":
             return self._parsers['events']
+        elif blob.source == "kubectl_logs":
+            return self._parsers['logs']
         elif blob.content_type == "text/plain":
             if blob.source == "metrics_server":
                 return self._parsers['metrics']
