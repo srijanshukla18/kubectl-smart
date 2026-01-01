@@ -65,20 +65,30 @@ Below are sample, outputs so you can see how kubectl-smart renders information.
 Status: CrashLoopBackOff
 
 🔴 ROOT CAUSE
-  💥 CrashLoopBackOff: failing-app-xyz (score: 85.0)
-    Container exits immediately after start, in restart loop
+  💥 Log Errors: Found 3 error(s) (score: 95.0)
+    Log analysis detected 3 unique error patterns. Recent: panic: database connection refused
 
 🟡 CONTRIBUTING FACTORS
+  ⚠️ CrashLoopBackOff: failing-app-xyz (score: 85.0)
+    Container exits immediately after start, in restart loop
   ⚠️ ImagePullBackOff: failing-app-xyz (score: 75.0)
     Failed to pull image "invalid-registry.com/app:latest"
 
+📅 RECENT EVENTS
+  Time      Type      Reason             Message
+  10:05:02  Warning   BackOff            Back-off restarting failed container
+  10:04:58  Normal    Pulled             Successfully pulled image
+  10:04:55  Normal    Scheduled          Successfully assigned to node-1
+
 💡 SUGGESTED ACTIONS
-  1. kubectl logs failing-app-xyz -n production
+  1. Review full logs for context
   2. docker pull invalid-registry.com/app:latest
-  3. kubectl get secrets -n production
+  3. Check application configuration
 
 ⏱️  Analysis completed in 1.2s
 ```
+
+### 🔗 graph (dependency visualization)
 
 ### 🔗 graph (dependency visualization)
 
