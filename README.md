@@ -1,4 +1,4 @@
-# kubectl-smart
+# kubectl-smart [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/srijanshukla18/kubectl-smart)
 
 ## 🎯 What is kubectl-smart?
 
