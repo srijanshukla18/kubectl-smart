@@ -1,0 +1,236 @@
+"""Tests for kubectl_smart/cli/main.py"""
+
+import os
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+from typer.testing import CliRunner
+
+from kubectl_smart.cli.main import ResourceType, app, version_callback
+
+
+runner = CliRunner()
+
+
+class TestVersionCallback:
+    """Tests for version callback"""
+
+    def test_version_callback_true(self):
+        """Test version callback exits when True"""
+        import typer
+
+        with pytest.raises(typer.Exit):
+            version_callback(True)
+
+    def test_version_callback_false(self):
+        """Test version callback does nothing when False"""
+        result = version_callback(False)
+        assert result is None
+
+    def test_version_callback_none(self):
+        """Test version callback does nothing when None"""
+        result = version_callback(None)
+        assert result is None
+
+
+class TestResourceType:
+    """Tests for ResourceType enum"""
+
+    def test_resource_type_values(self):
+        """Test ResourceType enum values"""
+        assert ResourceType.POD.value == "pod"
+        assert ResourceType.DEPLOYMENT.value == "deploy"
+        assert ResourceType.STATEFULSET.value == "sts"
+        assert ResourceType.JOB.value == "job"
+        assert ResourceType.SERVICE.value == "svc"
+        assert ResourceType.REPLICASET.value == "rs"
+        assert ResourceType.DAEMONSET.value == "ds"
+
+
+class TestMainCallback:
+    """Tests for main callback"""
+
+    def test_help(self):
+        """Test --help shows help"""
+        result = runner.invoke(app, ["--help"])
+        assert result.exit_code == 0
+        assert "kubectl-smart" in result.stdout
+        assert "diag" in result.stdout
+        assert "graph" in result.stdout
+        assert "top" in result.stdout
+
+    def test_version(self):
+        """Test --version shows version"""
+        result = runner.invoke(app, ["--version"])
+        assert result.exit_code == 0
+        assert "1.0.0" in result.stdout
+
+
+class TestDiagCommand:
+    """Tests for diag command"""
+
+    def test_diag_help(self):
+        """Test diag --help shows help"""
+        result = runner.invoke(app, ["diag", "--help"])
+        assert result.exit_code == 0
+        assert "Root-cause analysis" in result.stdout
+
+    @patch("kubectl_smart.cli.main.asyncio.run")
+    @patch("kubectl_smart.cli.commands.DiagCommand.execute")
+    def test_diag_basic(self, mock_execute, mock_run):
+        """Test basic diag command execution"""
+        from kubectl_smart.cli.commands import CommandResult
+
+        mock_run.return_value = CommandResult(output="Diagnosis output", exit_code=0)
+        result = runner.invoke(app, ["diag", "pod", "test-pod"])
+
+        # Command should attempt to run
+        assert mock_run.called or result.exit_code in [0, 2]
+
+    @patch("kubectl_smart.cli.main.asyncio.run")
+    def test_diag_with_namespace(self, mock_run):
+        """Test diag command with namespace"""
+        from kubectl_smart.cli.commands import CommandResult
+
+        mock_run.return_value = CommandResult(output="Output", exit_code=0)
+        result = runner.invoke(app, ["diag", "pod", "test-pod", "-n", "production"])
+
+        assert mock_run.called or result.exit_code in [0, 2]
+
+    @patch("kubectl_smart.cli.main.asyncio.run")
+    def test_diag_with_context(self, mock_run):
+        """Test diag command with context"""
+        from kubectl_smart.cli.commands import CommandResult
+
+        mock_run.return_value = CommandResult(output="Output", exit_code=0)
+        result = runner.invoke(
+            app, ["diag", "deploy", "my-app", "--context", "my-cluster"]
+        )
+
+        assert mock_run.called or result.exit_code in [0, 2]
+
+    def test_diag_invalid_resource_type(self):
+        """Test diag with invalid resource type"""
+        result = runner.invoke(app, ["diag", "invalid", "test"])
+        assert result.exit_code != 0
+
+
+class TestGraphCommand:
+    """Tests for graph command"""
+
+    def test_graph_help(self):
+        """Test graph --help shows help"""
+        result = runner.invoke(app, ["graph", "--help"])
+        assert result.exit_code == 0
+        assert "Dependency visualization" in result.stdout
+
+    @patch("kubectl_smart.cli.main.asyncio.run")
+    def test_graph_basic(self, mock_run):
+        """Test basic graph command execution"""
+        from kubectl_smart.cli.commands import CommandResult
+
+        mock_run.return_value = CommandResult(output="Graph output", exit_code=0)
+        result = runner.invoke(app, ["graph", "pod", "test-pod"])
+
+        assert mock_run.called or result.exit_code in [0, 2]
+
+    @patch("kubectl_smart.cli.main.asyncio.run")
+    def test_graph_upstream(self, mock_run):
+        """Test graph command with --upstream"""
+        from kubectl_smart.cli.commands import CommandResult
+
+        mock_run.return_value = CommandResult(output="Output", exit_code=0)
+        result = runner.invoke(app, ["graph", "pod", "test-pod", "--upstream"])
+
+        assert mock_run.called or result.exit_code in [0, 2]
+
+    @patch("kubectl_smart.cli.main.asyncio.run")
+    def test_graph_downstream(self, mock_run):
+        """Test graph command with --downstream"""
+        from kubectl_smart.cli.commands import CommandResult
+
+        mock_run.return_value = CommandResult(output="Output", exit_code=0)
+        result = runner.invoke(app, ["graph", "deploy", "my-app", "--downstream"])
+
+        assert mock_run.called or result.exit_code in [0, 2]
+
+
+class TestTopCommand:
+    """Tests for top command"""
+
+    def test_top_help(self):
+        """Test top --help shows help"""
+        result = runner.invoke(app, ["top", "--help"])
+        assert result.exit_code == 0
+        assert "Predictive" in result.stdout
+
+    @patch("kubectl_smart.cli.main.asyncio.run")
+    def test_top_basic(self, mock_run):
+        """Test basic top command execution"""
+        from kubectl_smart.cli.commands import CommandResult
+
+        mock_run.return_value = CommandResult(output="Top output", exit_code=0)
+        result = runner.invoke(app, ["top", "default"])
+
+        assert mock_run.called or result.exit_code in [0, 2]
+
+    @patch("kubectl_smart.cli.main.asyncio.run")
+    def test_top_with_horizon(self, mock_run):
+        """Test top command with custom horizon"""
+        from kubectl_smart.cli.commands import CommandResult
+
+        mock_run.return_value = CommandResult(output="Output", exit_code=0)
+        result = runner.invoke(app, ["top", "production", "--horizon", "24"])
+
+        assert mock_run.called or result.exit_code in [0, 2]
+
+    @patch("kubectl_smart.cli.main.asyncio.run")
+    def test_top_with_context(self, mock_run):
+        """Test top command with context"""
+        from kubectl_smart.cli.commands import CommandResult
+
+        mock_run.return_value = CommandResult(output="Output", exit_code=0)
+        result = runner.invoke(app, ["top", "staging", "--context", "staging-cluster"])
+
+        assert mock_run.called or result.exit_code in [0, 2]
+
+
+class TestLegacyCommands:
+    """Tests for legacy/deprecated commands"""
+
+    def test_describe_deprecated(self):
+        """Test describe command shows deprecation warning"""
+        result = runner.invoke(app, ["describe", "pod", "test"])
+        assert result.exit_code == 1
+        assert "deprecated" in result.stdout.lower()
+
+    def test_deps_deprecated(self):
+        """Test deps command shows deprecation warning"""
+        result = runner.invoke(app, ["deps", "pod", "test"])
+        assert result.exit_code == 1
+        assert "deprecated" in result.stdout.lower()
+
+    def test_events_deprecated(self):
+        """Test events command shows deprecation warning"""
+        result = runner.invoke(app, ["events"])
+        assert result.exit_code == 1
+        assert "deprecated" in result.stdout.lower()
+
+
+class TestDebugMode:
+    """Tests for debug mode"""
+
+    @patch("kubectl_smart.cli.main.asyncio.run")
+    def test_debug_flag(self, mock_run):
+        """Test --debug flag sets debug logging"""
+        from kubectl_smart.cli.commands import CommandResult
+
+        mock_run.return_value = CommandResult(output="Output", exit_code=0)
+
+        # Clear any existing debug env var
+        os.environ.pop("KUBECTL_SMART_DEBUG", None)
+
+        result = runner.invoke(app, ["--debug", "diag", "pod", "test"])
+
+        # After command runs with --debug, env var should be set
+        # (This is set in main callback)

@@ -198,6 +198,60 @@ class DiagCommand(BaseCommand):
             logger.debug(f"DiagCommand returning exit_code=2 due to exception: {e}")
             return CommandResult(output=output, exit_code=2, analysis_duration=analysis_duration)
     
+    async def execute_raw(self, subject: SubjectCtx) -> DiagnosisResult:
+        """Execute diagnosis and return raw DiagnosisResult (for JSON output)"""
+        start_time = time.time()
+
+        # Collect data using specified collectors
+        collector_names = ['get', 'describe', 'events', 'logs']
+        all_resources = await self._collect_data(subject, collector_names)
+
+        # Build dependency graph
+        self.graph_builder.add_resources(all_resources)
+
+        # Find target resource
+        target_resource = None
+        for resource in all_resources:
+            if (resource.kind == subject.kind and
+                resource.name == subject.name and
+                resource.namespace == subject.namespace):
+                target_resource = resource
+                break
+
+        if not target_resource:
+            raise ValueError(f"Resource {subject.full_name} not found")
+
+        # Extract events related to this resource
+        events = [r for r in all_resources if r.kind.value == "Event"]
+        events.sort(key=lambda x: x.creation_timestamp.timestamp() if x.creation_timestamp else 0, reverse=True)
+
+        # Analyze issues
+        issues = self.scoring_engine.analyze_issues(all_resources, events, self.graph_builder)
+        target_issues = [
+            issue for issue in issues
+            if issue.resource_uid == target_resource.uid
+        ]
+
+        # Identify root cause and contributing factors
+        root_cause = self.scoring_engine.get_root_cause(target_issues)
+        contributing_factors = self.scoring_engine.get_contributing_factors(target_issues, root_cause)
+
+        # Generate suggested actions
+        suggested_actions = self._generate_suggested_actions(target_resource, root_cause, contributing_factors)
+
+        analysis_duration = time.time() - start_time
+
+        return DiagnosisResult(
+            subject=subject,
+            resource=target_resource,
+            issues=target_issues,
+            root_cause=root_cause,
+            contributing_factors=contributing_factors,
+            suggested_actions=suggested_actions,
+            recent_events=events[:5],
+            analysis_duration=analysis_duration,
+        )
+
     def _generate_suggested_actions(self, resource: ResourceRecord, root_cause, contributing_factors) -> List[str]:
         """Generate specific suggested actions based on diagnosis"""
         actions = []

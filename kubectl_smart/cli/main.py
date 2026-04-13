@@ -8,9 +8,7 @@ This module implements the exact three commands specified in the technical requi
 """
 
 import asyncio
-import sys
 from enum import Enum
-from pathlib import Path
 from typing import Optional
 
 import structlog
@@ -128,36 +126,56 @@ def main(
 @app.command()
 def diag(
     resource_type: Annotated[ResourceType, typer.Argument(help="Resource type (pod, deploy, sts, job)")],
-    name: Annotated[str, typer.Argument(help="Resource name")],
+    name: Annotated[Optional[str], typer.Argument(help="Resource name (or use --all)")] = None,
     namespace: Annotated[Optional[str], typer.Option("--namespace", "-n", help="Namespace")] = None,
     context: Annotated[Optional[str], typer.Option("--context", help="kubectl context")] = None,
-    
+    output: Annotated[str, typer.Option("--output", "-o", help="Output format (text, json)")] = "text",
+    watch: Annotated[bool, typer.Option("--watch", "-w", help="Watch for changes and re-run diagnosis")] = False,
+    all_resources: Annotated[bool, typer.Option("--all", help="Diagnose all resources of this type")] = False,
+    interval: Annotated[int, typer.Option("--interval", help="Watch interval in seconds")] = 5,
 ):
     """
-    🎯 Root-cause analysis of a single workload
-    
+    🎯 Root-cause analysis of workloads
+
     [bold]Purpose:[/bold] One-shot diagnosis that surfaces root cause and top contributing factors
-    
+
     [bold]Output Sections:[/bold]
     1. Header — object identity & status
-    2. Root Cause — highest-score issue  
+    2. Root Cause — highest-score issue
     3. Contributing Factors — next 2 issues (if ≥50 score)
     4. Suggested Action — kubectl snippets & guidance
-    
+
     [bold]Exit Codes:[/bold] 0=no issues ≥50 | 1=warnings | 2=critical
-    
+
     [bold]Examples:[/bold]
       kubectl-smart diag pod failing-pod
       kubectl-smart diag deploy my-app -n production
-      kubectl-smart diag sts database
+      kubectl-smart diag pod failing-pod -o json        # JSON output
+      kubectl-smart diag pod failing-pod --watch        # Continuous monitoring
+      kubectl-smart diag pod --all -n production        # Diagnose all pods
     """
-    _validate_resource_name(name)
+    # Validate inputs
+    if not name and not all_resources:
+        typer.echo("Error: Either resource name or --all flag must be provided", err=True)
+        raise typer.Exit(2)
+    if name and all_resources:
+        typer.echo("Error: Cannot use both resource name and --all flag", err=True)
+        raise typer.Exit(2)
+    if output not in ('text', 'json'):
+        typer.echo(f"Error: Invalid output format '{output}'. Valid options: text, json", err=True)
+        raise typer.Exit(2)
+    if interval < 1:
+        typer.echo("Error: Watch interval must be >= 1 second", err=True)
+        raise typer.Exit(2)
+
+    if name is not None:
+        _validate_resource_name(name)  # type: ignore[arg-type]
     _validate_namespace(namespace)
     _validate_context(context)
-    
+
     # Lazy import models
     from ..models import ResourceKind, SubjectCtx
-    
+
     # Map resource type to ResourceKind
     kind_map = {
         ResourceType.POD: ResourceKind.POD,
@@ -168,8 +186,78 @@ def diag(
         ResourceType.REPLICASET: ResourceKind.REPLICASET,
         ResourceType.DAEMONSET: ResourceKind.DAEMONSET,
     }
-    
-    # Create subject context
+
+    # Handle batch mode (--all)
+    if all_resources:
+        from ..batch import BatchAnalyzer
+        from ..renderers.json_renderer import JsonRenderer
+
+        analyzer = BatchAnalyzer()
+        kind = kind_map[resource_type]
+
+        try:
+            batch_result = asyncio.run(analyzer.diagnose_all(
+                kind=kind,
+                namespace=namespace,
+                context=context,
+            ))
+
+            if output == "json":
+                renderer = JsonRenderer(pretty=True)
+                typer.echo(renderer.render_batch(
+                    batch_result.results,
+                    {
+                        "total": batch_result.total_resources,
+                        "successful": batch_result.successful,
+                        "failed": batch_result.failed,
+                        "duration": batch_result.duration,
+                        "errors": batch_result.errors,
+                    }
+                ))
+            else:
+                # Text output for batch
+                typer.echo(f"\n📋 BATCH DIAGNOSIS: {resource_type.value}s")
+                if namespace:
+                    typer.echo(f"Namespace: {namespace}")
+                typer.echo(f"Total: {batch_result.total_resources} | "
+                          f"Analyzed: {batch_result.successful} | "
+                          f"Failed: {batch_result.failed}")
+                typer.echo("=" * 60)
+
+                for result in batch_result.results:
+                    status = result.resource.status if result.resource else "Unknown"
+                    issues_str = ""
+                    if result.critical_issues:
+                        issues_str = f"🔴 {len(result.critical_issues)} critical"
+                    elif result.warning_issues:
+                        issues_str = f"🟡 {len(result.warning_issues)} warning"
+                    else:
+                        issues_str = "✅ healthy"
+
+                    root_cause_str = ""
+                    if result.root_cause:
+                        root_cause_str = f" - {result.root_cause.title}"
+
+                    typer.echo(f"  {result.subject.name}: {status} | {issues_str}{root_cause_str}")
+
+                if batch_result.errors:
+                    typer.echo(f"\n⚠️  Errors ({len(batch_result.errors)}):")
+                    for error in batch_result.errors[:5]:
+                        typer.echo(f"  - {error.get('resource')}: {error.get('error')}")
+
+                typer.echo(f"\n⏱️  Completed in {batch_result.duration:.2f}s")
+
+            # Exit code: 2 if any critical/warning issues found
+            has_issues = any(r.critical_issues or r.warning_issues for r in batch_result.results)
+            raise typer.Exit(2 if has_issues else 0)
+
+        except typer.Exit:
+            raise
+        except Exception as e:
+            typer.echo(f"Error: {e}", err=True)
+            raise typer.Exit(2)
+
+    # Single resource mode
     subject = SubjectCtx(
         kind=kind_map[resource_type],
         name=name,
@@ -177,30 +265,62 @@ def diag(
         context=context,
         scope="resource",
     )
-    
+
+    # Handle watch mode
+    if watch:
+        from ..watch import ResourceWatcher
+
+        watcher = ResourceWatcher(
+            subject=subject,
+            interval_seconds=float(interval),
+        )
+
+        try:
+            asyncio.run(watcher.start(output_format=output))
+        except KeyboardInterrupt:
+            pass
+        raise typer.Exit(0)
+
     # Lazy import to avoid slow startup
     from .commands import DiagCommand
-    
+
     # Create and run command
     command = DiagCommand()
-    
+
     try:
-        result = asyncio.run(command.execute(subject))
-        typer.echo(result.output)
-        
-        # Set exit code based on issues found
-        import os
-        if os.getenv('KUBECTL_SMART_DEBUG'):
-            typer.echo(f"Debug: result.exit_code = {result.exit_code}", err=True)
-        raise typer.Exit(result.exit_code)
-        
+        if output == "json":
+            # Use execute_raw to get DiagnosisResult for JSON rendering
+            from ..renderers.json_renderer import JsonRenderer
+
+            diagnosis_result = asyncio.run(command.execute_raw(subject))
+            renderer = JsonRenderer(pretty=True)
+            typer.echo(renderer.render_diagnosis(diagnosis_result))
+
+            # Determine exit code
+            exit_code = 2 if diagnosis_result.critical_issues or diagnosis_result.warning_issues else 0
+            raise typer.Exit(exit_code)
+        else:
+            result = asyncio.run(command.execute(subject))
+            typer.echo(result.output)
+
+            # Set exit code based on issues found
+            import os
+            if os.getenv('KUBECTL_SMART_DEBUG'):
+                typer.echo(f"Debug: result.exit_code = {result.exit_code}", err=True)
+            raise typer.Exit(result.exit_code)
+
     except typer.Exit:
         raise  # Re-raise typer.Exit to ensure correct exit code
     except Exception as e:
         import os
         if os.getenv('KUBECTL_SMART_DEBUG'):
             typer.echo(f"Debug: Exception caught: {e}", err=True)
-        typer.echo(f"Error: {e}", err=True)
+        if output == "json":
+            from ..renderers.json_renderer import JsonRenderer
+            renderer = JsonRenderer(pretty=True)
+            typer.echo(renderer.render_error(str(e)))
+        else:
+            typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(2)
 
 
