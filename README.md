@@ -40,7 +40,7 @@ kubectl-smart diag pod --all -n production --max-concurrent 2
 ```
 **Purpose**: One-shot diagnosis that surfaces root cause and contributing factors
 
-Supported resource types: `pod`, `deploy`/`deployment`, `sts`/`statefulset`, `job`, `svc`/`service`, `rs`/`replicaset`, `ds`/`daemonset`.
+Supported resource types: `pod`, `deploy`/`deployment`, `sts`/`statefulset`, `job`, `svc`/`service`, `ingress`, `rs`/`replicaset`, `ds`/`daemonset`.
 
 Output and modes:
 - Text output is the default; `-o json` is available for automation.
@@ -81,7 +81,11 @@ Data sources and behavior:
 - CPU/Memory: metrics-server (`kubectl top`) snapshot; forecasts improve across runs using a small local cache.
 - PVC Disk usage: kubelet Prometheus metrics (kubelet_volume_stats_* via API proxy). If unavailable, output notes that signals may be limited.
 - Certificate expiry: parses Secret `tls.crt` via X.509; warns when ≤ 14 days.
-- Read-only; no cluster writes. If a source is unavailable, `top` succeeds but shows no warnings and prints a note.
+  If Secret inventory is available, also warns when an Ingress references a
+  missing TLS Secret. If Secret collection is blocked, the missing-reference
+  check is suppressed and the output shows a data gap instead.
+- Read-only; no cluster writes. If a source is unavailable, `top` succeeds,
+  prints `DATA GAPS`, and avoids unsupported warnings from missing signals.
 
 Requirements and graceful degradation:
 - For full predictions, ensure metrics-server is installed and kubelet metrics accessible via API proxy.
