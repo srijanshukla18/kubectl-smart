@@ -58,6 +58,9 @@ class JsonRenderer:
                 self._serialize_issue(f) for f in result.contributing_factors
             ],
             "issues": [self._serialize_issue(i) for i in result.issues],
+            "diagnostic_issues": [
+                self._serialize_issue(i) for i in result.diagnostic_issues
+            ],
             "issue_summary": {
                 "total": len(result.diagnostic_issues),
                 "critical": len(result.critical_issues),

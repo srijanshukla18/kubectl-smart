@@ -1,5 +1,6 @@
 """Tests for kubectl_smart/renderers/terminal.py"""
 
+import json
 
 
 from kubectl_smart.models import (
@@ -84,6 +85,10 @@ class TestRenderDiagnosis:
         assert '"total": 1' in output
         assert '"critical": 1' in output
         assert '"exit_code": 2' in output
+        parsed = json.loads(output)
+        assert parsed["issues"] == []
+        assert len(parsed["diagnostic_issues"]) == 1
+        assert parsed["diagnostic_issues"][0]["title"] == sample_issue.title
 
     def test_render_diagnosis_root_cause_header_uses_issue_severity(
         self, sample_subject_ctx, sample_resource_record
