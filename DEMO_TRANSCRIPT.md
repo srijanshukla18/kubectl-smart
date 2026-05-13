@@ -2,14 +2,16 @@
 
 ## Setup Before Recording
 
-Use a terminal with the demo context already selected:
+Run from the repository checkout. Pin the demo context for this shell so the
+recording does not depend on the global kubectl context:
 
 ```bash
-kubectl config current-context
-kubectl get pods -n kubectl-smart-complex
+export KUBECTL_SMART_CONTEXT=kind-kubectl-smart-demo
+kubectl --context "$KUBECTL_SMART_CONTEXT" get pods -n kubectl-smart-complex
+./demo-smoke.sh
 ```
 
-Expected context:
+Expected demo context:
 
 ```text
 kind-kubectl-smart-demo
@@ -32,7 +34,7 @@ Say:
 Run:
 
 ```bash
-kubectl-smart --help
+./kubectl-smart --help
 ```
 
 Say:
@@ -53,7 +55,7 @@ Say:
 Run:
 
 ```bash
-kubectl-smart diag pod checkout-api-0 -n kubectl-smart-complex
+./kubectl-smart diag pod checkout-api-0 -n kubectl-smart-complex
 ```
 
 Say:
@@ -67,7 +69,7 @@ Say:
 Run:
 
 ```bash
-kubectl-smart graph pod checkout-api-0 -n kubectl-smart-complex --upstream --downstream
+./kubectl-smart graph pod checkout-api-0 -n kubectl-smart-complex --upstream --downstream
 ```
 
 Say:
@@ -82,7 +84,7 @@ Say:
 Run:
 
 ```bash
-kubectl-smart diag svc inventory-db -n kubectl-smart-complex
+./kubectl-smart diag svc inventory-db -n kubectl-smart-complex
 ```
 
 Say:
@@ -96,16 +98,16 @@ Say:
 Run:
 
 ```bash
-kubectl-smart top kubectl-smart-complex --horizon 72
+./kubectl-smart top kubectl-smart-complex --horizon 72
 ```
 
 Say:
 
 > Finally, `top` looks at predictive risks in the namespace. In this demo it
-> spots a short-lived TLS certificate, so the same tool can help with immediate
-> debugging and with "this will bite us soon" problems. If a signal is missing,
-> like metrics-server, it says that explicitly under data gaps instead of
-> pretending the analysis was complete.
+> spots an actually short-lived TLS Secret, not just an Ingress reference, so
+> the same tool can help with immediate debugging and with "this will bite us
+> soon" problems. If a signal is missing, like metrics-server, it says that
+> explicitly under data gaps instead of pretending the analysis was complete.
 
 ### 1:35-2:35 - Case 2: Fulfillment Config Trap
 
@@ -118,7 +120,7 @@ Say:
 Run:
 
 ```bash
-kubectl-smart diag pod fulfillment-worker-0 -n kubectl-smart-complex
+./kubectl-smart diag pod fulfillment-worker-0 -n kubectl-smart-complex
 ```
 
 Say:
@@ -131,7 +133,7 @@ Say:
 Run:
 
 ```bash
-kubectl-smart graph pod fulfillment-worker-0 -n kubectl-smart-complex --upstream --downstream
+./kubectl-smart graph pod fulfillment-worker-0 -n kubectl-smart-complex --upstream --downstream
 ```
 
 Say:
@@ -145,7 +147,7 @@ Say:
 Run:
 
 ```bash
-kubectl get events -n kubectl-smart-complex --field-selector involvedObject.name=fulfillment-worker-0 --sort-by=.lastTimestamp
+kubectl --context "$KUBECTL_SMART_CONTEXT" get events -n kubectl-smart-complex --field-selector involvedObject.name=fulfillment-worker-0 --sort-by=.lastTimestamp
 ```
 
 Say:
@@ -176,7 +178,7 @@ close.
 Run:
 
 ```bash
-KUBECONFIG=.kubectl-smart-rbac.kubeconfig kubectl-smart diag pod checkout-api-0 -n kubectl-smart-complex
+env KUBECONFIG=.kubectl-smart-rbac.kubeconfig ./kubectl-smart diag pod checkout-api-0 -n kubectl-smart-complex --context kubectl-smart-rbac-demo
 ```
 
 Say:
@@ -199,10 +201,10 @@ Say:
 Run:
 
 ```bash
-kubectl-smart diag pod checkout-api-0 -n kubectl-smart-complex
-kubectl-smart graph pod checkout-api-0 -n kubectl-smart-complex --upstream --downstream
-kubectl-smart diag svc inventory-db -n kubectl-smart-complex
-kubectl-smart top kubectl-smart-complex --horizon 72
+./kubectl-smart diag pod checkout-api-0 -n kubectl-smart-complex
+./kubectl-smart graph pod checkout-api-0 -n kubectl-smart-complex --upstream --downstream
+./kubectl-smart diag svc inventory-db -n kubectl-smart-complex
+./kubectl-smart top kubectl-smart-complex --horizon 72
 ```
 
 Say:

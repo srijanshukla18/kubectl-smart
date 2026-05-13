@@ -3,6 +3,9 @@
 These scenarios live in `kubectl-smart-complex` and do not modify the existing
 `kubectl-smart-lab` failures.
 
+For the narration track, use `DEMO_TRANSCRIPT.md`. This file stays focused on
+setup, validation, and command order.
+
 ## Setup
 
 ```bash
