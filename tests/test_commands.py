@@ -105,6 +105,79 @@ class TestDiagCommand:
     @pytest.mark.asyncio
     @patch("kubectl_smart.cli.commands.collector_registry")
     @patch("kubectl_smart.cli.commands.parser_registry")
+    async def test_execute_resource_not_found_preserves_data_gaps(
+        self, mock_parser_registry, mock_collector_registry
+    ):
+        """Test not-found diagnosis still shows why evidence may be incomplete."""
+        gap_blob = RawBlob(
+            data={},
+            source="kubectl_get",
+            content_type="application/json",
+            metadata={
+                "data_gap": True,
+                "collector": "kubectl_get",
+                "operation": "get",
+                "resource_type": "pod",
+                "category": "rbac",
+                "error": "forbidden",
+            },
+        )
+        mock_collector = MagicMock()
+        mock_collector.name = "kubectl_get"
+        mock_collector.collect = AsyncMock(return_value=gap_blob)
+        mock_collector_registry.create.return_value = mock_collector
+        mock_parser_registry.parse.return_value = []
+
+        cmd = DiagCommand()
+        subject = SubjectCtx(
+            kind=ResourceKind.POD, name="missing-pod", namespace="default"
+        )
+        result = await cmd.execute(subject)
+
+        assert result.exit_code == 2
+        assert "Resource not found" in result.output
+        assert "DATA GAPS" in result.output
+        assert "get pod unavailable (rbac): forbidden" in result.output
+
+    @pytest.mark.asyncio
+    @patch("kubectl_smart.cli.commands.collector_registry")
+    @patch("kubectl_smart.cli.commands.parser_registry")
+    async def test_execute_raw_resource_not_found_returns_incomplete_result(
+        self, mock_parser_registry, mock_collector_registry
+    ):
+        """Test JSON-capable raw diagnosis preserves not-found data gaps."""
+        gap_blob = RawBlob(
+            data={},
+            source="kubectl_get",
+            content_type="application/json",
+            metadata={
+                "data_gap": True,
+                "collector": "kubectl_get",
+                "operation": "get",
+                "resource_type": "pod",
+                "category": "rbac",
+                "error": "forbidden",
+            },
+        )
+        mock_collector = MagicMock()
+        mock_collector.name = "kubectl_get"
+        mock_collector.collect = AsyncMock(return_value=gap_blob)
+        mock_collector_registry.create.return_value = mock_collector
+        mock_parser_registry.parse.return_value = []
+
+        cmd = DiagCommand()
+        subject = SubjectCtx(
+            kind=ResourceKind.POD, name="missing-pod", namespace="default"
+        )
+        result = await cmd.execute_raw(subject)
+
+        assert result.resource is None
+        assert result.exit_code == 2
+        assert result.data_gaps == ["get pod unavailable (rbac): forbidden"]
+
+    @pytest.mark.asyncio
+    @patch("kubectl_smart.cli.commands.collector_registry")
+    @patch("kubectl_smart.cli.commands.parser_registry")
     async def test_execute_success_no_issues(
         self, mock_parser_registry, mock_collector_registry
     ):

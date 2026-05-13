@@ -251,6 +251,8 @@ class DiagnosisResult(BaseModel):
     @property
     def exit_code(self) -> int:
         """Return CLI exit code for this diagnosis."""
+        if self.resource is None:
+            return 2
         if self.critical_issues:
             return 2
         if self.warning_issues:

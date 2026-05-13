@@ -240,6 +240,34 @@ class TestDiagCommand:
         assert '"exit_code": 2' in result.stdout
         assert "Resource Pod/default/missing not found" in result.stdout
 
+    @patch("kubectl_smart.cli.commands.DiagCommand.execute_raw")
+    def test_diag_json_not_found_result_exits_two(self, mock_execute_raw):
+        """Test JSON not-found diagnoses preserve data gaps and fail."""
+        from kubectl_smart.models import DiagnosisResult, ResourceKind, SubjectCtx
+
+        subject = SubjectCtx(
+            kind=ResourceKind.POD,
+            name="missing",
+            namespace="default",
+        )
+        mock_execute_raw.return_value = DiagnosisResult(
+            subject=subject,
+            resource=None,
+            data_gaps=["get pod unavailable (rbac): forbidden"],
+            analysis_duration=0.1,
+        )
+
+        result = runner.invoke(
+            app,
+            ["diag", "pod", "missing", "-n", "default", "-o", "json"],
+        )
+
+        assert result.exit_code == 2
+        assert '"resource": null' in result.stdout
+        assert '"data_gap_count": 1' in result.stdout
+        assert '"analysis_complete": false' in result.stdout
+        assert '"exit_code": 2' in result.stdout
+
     @patch("kubectl_smart.batch.BatchAnalyzer.diagnose_all")
     def test_diag_all_json_unexpected_error_stays_json(self, mock_diagnose_all):
         """Test JSON batch mode emits machine-readable unexpected errors."""

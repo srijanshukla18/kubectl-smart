@@ -501,6 +501,18 @@ class TestDiagnosisResult:
         assert warning.exit_code == 1
         assert critical.exit_code == 2
 
+    def test_diagnosis_result_missing_resource_is_failure(
+        self, sample_subject_ctx
+    ):
+        """Test not-found diagnoses do not produce a green exit code."""
+        result = DiagnosisResult(
+            subject=sample_subject_ctx,
+            resource=None,
+            analysis_duration=1.0,
+        )
+
+        assert result.exit_code == 2
+
     def test_diagnosis_result_exit_code_counts_surfaced_root_cause(
         self, sample_subject_ctx, sample_resource_record
     ):

@@ -312,10 +312,16 @@ class DiagCommand(BaseCommand):
                 # Resource not found
                 analysis_duration = time.time() - start_time
                 renderer = TerminalRenderer(colors_enabled=self.config.colors_enabled)
-                output = renderer.render_error(f"Resource {subject.full_name} not found")
+                result = DiagnosisResult(
+                    subject=subject,
+                    resource=None,
+                    data_gaps=self.data_gaps,
+                    analysis_duration=analysis_duration,
+                )
+                output = renderer.render_diagnosis(result)
                 
                 # All errors return exit_code=2
-                return CommandResult(output=output, exit_code=2, analysis_duration=analysis_duration)
+                return CommandResult(output=output, exit_code=result.exit_code, analysis_duration=analysis_duration)
             
             # Extract events related to this resource
             events = [r for r in all_resources if r.kind.value == "Event"]
@@ -401,7 +407,12 @@ class DiagCommand(BaseCommand):
                 break
 
         if not target_resource:
-            raise ValueError(f"Resource {subject.full_name} not found")
+            return DiagnosisResult(
+                subject=subject,
+                resource=None,
+                data_gaps=self.data_gaps,
+                analysis_duration=time.time() - start_time,
+            )
 
         # Extract events related to this resource
         events = [r for r in all_resources if r.kind.value == "Event"]
