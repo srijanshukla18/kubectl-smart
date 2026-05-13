@@ -169,7 +169,7 @@ class TestDiagCommand:
 
         assert result.exit_code == 0
         assert "Data gaps: 1 | Concurrency: 5" in result.stdout
-        assert "test-pod: Running | ✅ healthy | data gaps: 1" in result.stdout
+        assert "test-pod: Running | ⚪ no issues found | data gaps: 1" in result.stdout
 
     @patch("kubectl_smart.batch.BatchAnalyzer")
     def test_diag_all_passes_max_concurrent(self, mock_batch_analyzer):
