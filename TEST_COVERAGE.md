@@ -4,7 +4,7 @@
 
 - Unit test command: `uv run --extra dev pytest`
 - Coverage command: `uv run --extra dev pytest --cov=kubectl_smart --cov-report=term-missing`
-- Latest local result: `437 passed`
+- Latest local result: `438 passed`
 - Latest measured coverage: `84%`
 
 Coverage is measured, not estimated. The default `pytest` command does not enforce
@@ -45,6 +45,7 @@ coverage command above when working on test depth.
 - Batch resource listing validates namespace and context before spawning kubectl
 - Watch-state extraction for warning, critical, and unexpected exit codes,
   diagnosis-detail change detection, and data-gap appearance/resolution
+- Watch mode records failed checks and recovery in the event stream/summary
 
 ## Known Coverage Gaps
 

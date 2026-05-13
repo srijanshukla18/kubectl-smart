@@ -184,3 +184,59 @@ async def test_check_resource_uses_raw_diagnosis_for_change_detection(
     assert watcher.previous_state is not None
     assert watcher.previous_state.root_cause_title == "Log Errors"
     assert any(change.event_type == "root_cause_change" for change in changes)
+
+
+@pytest.mark.asyncio
+async def test_check_resource_records_failures_and_recovery(monkeypatch, capsys):
+    """Watch mode should summarize failed checks and recovery."""
+    subject = SubjectCtx(kind=ResourceKind.POD, name="api", namespace="default")
+    resource = ResourceRecord(
+        kind=ResourceKind.POD,
+        name="api",
+        uid="api-uid",
+        namespace="default",
+        status="Running",
+    )
+    results = [
+        RuntimeError("apiserver timeout"),
+        DiagnosisResult(
+            subject=subject,
+            resource=resource,
+            analysis_duration=0.1,
+        ),
+    ]
+
+    class FakeDiagCommand:
+        async def execute_raw(self, received_subject):
+            assert received_subject == subject
+            result = results.pop(0)
+            if isinstance(result, Exception):
+                raise result
+            return result
+
+    class FakeRenderer:
+        def render_diagnosis(self, result):
+            return f"rendered {result.resource.name}"
+
+    changes = []
+    watcher = ResourceWatcher(subject, on_change=changes.append)
+
+    monkeypatch.setattr(
+        "kubectl_smart.cli.commands.DiagCommand",
+        FakeDiagCommand,
+    )
+
+    await watcher._check_resource(FakeRenderer(), "text")
+    await watcher._check_resource(FakeRenderer(), "text")
+    output = capsys.readouterr().out
+
+    assert "Check failed: apiserver timeout" in output
+    assert "Check recovered" in output
+    assert [event.event_type for event in watcher.events] == [
+        "check_failed",
+        "check_recovered",
+    ]
+    assert [event.event_type for event in changes] == [
+        "check_failed",
+        "check_recovered",
+    ]

@@ -65,6 +65,7 @@ class ResourceWatcher:
         self.previous_state: Optional[WatchState] = None
         self.events: List[WatchEvent] = []
         self.iteration_count = 0
+        self.last_check_failed = False
 
     async def start(self, renderer=None, output_format: str = "text") -> None:
         """Start watching the resource
@@ -126,11 +127,30 @@ class ResourceWatcher:
                 # First iteration - print full diagnosis
                 self._print_initial_state(result, renderer, output_format)
 
+            if self.last_check_failed:
+                event = WatchEvent(
+                    timestamp=datetime.now(),
+                    event_type="check_recovered",
+                    resource=self.subject.full_name,
+                    details={},
+                )
+                self.events.append(event)
+                self._print_changes([event])
+                self.last_check_failed = False
+
             self.previous_state = current_state
 
         except Exception as e:
             logger.warning(f"Check failed: {e}")
-            print(f"\n⚠️  [{datetime.now().strftime('%H:%M:%S')}] Check failed: {e}", flush=True)
+            event = WatchEvent(
+                timestamp=datetime.now(),
+                event_type="check_failed",
+                resource=self.subject.full_name,
+                details={"error": str(e)},
+            )
+            self.events.append(event)
+            self.last_check_failed = True
+            self._print_changes([event])
 
     def _extract_state(self, result) -> WatchState:
         """Extract comparable state from diagnosis result"""
@@ -340,6 +360,12 @@ class ResourceWatcher:
             elif change.event_type == "data_gap_resolved":
                 print(f"\n{icon} [{timestamp}] Data gap resolved: {change.details['gap']}", flush=True)
 
+            elif change.event_type == "check_failed":
+                print(f"\n{icon} [{timestamp}] Check failed: {change.details['error']}", flush=True)
+
+            elif change.event_type == "check_recovered":
+                print(f"\n{icon} [{timestamp}] Check recovered", flush=True)
+
             # Trigger callback if registered
             if self.on_change:
                 self.on_change(change)
@@ -372,6 +398,8 @@ class ResourceWatcher:
             "data_gap_change": "⚪",
             "data_gap_detected": "⚪",
             "data_gap_resolved": "✅",
+            "check_failed": "⚠️",
+            "check_recovered": "✅",
         }
         return icons.get(event_type, "📌")
 
@@ -386,5 +414,7 @@ class ResourceWatcher:
             "data_gap_change": "white",
             "data_gap_detected": "yellow",
             "data_gap_resolved": "green",
+            "check_failed": "red",
+            "check_recovered": "green",
         }
         return colors.get(event_type, "white")
