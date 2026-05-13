@@ -327,6 +327,25 @@ class TestDiagCommand:
         assert "No Pods found" in result.stdout
         assert "Errors" not in result.stdout
 
+    @patch("kubectl_smart.batch.BatchAnalyzer.diagnose_all")
+    def test_diag_all_ingress_uses_kubectl_plural_header(self, mock_diagnose_all):
+        """Test batch text output uses kubectl plurals for Ingress."""
+        from kubectl_smart.batch import BatchResult
+
+        mock_diagnose_all.return_value = BatchResult(
+            total_resources=0,
+            successful=0,
+            failed=0,
+            messages=[{"message": "No Ingresses found"}],
+            duration=0.1,
+        )
+
+        result = runner.invoke(app, ["diag", "ingress", "--all", "-n", "default"])
+
+        assert result.exit_code == 0
+        assert "BATCH DIAGNOSIS: ingresses" in result.stdout
+        assert "No Ingresses found" in result.stdout
+
     def test_diag_all_rejects_invalid_max_concurrent(self):
         """Test --max-concurrent must be positive."""
         result = runner.invoke(

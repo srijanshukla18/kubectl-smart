@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from kubectl_smart.batch import BatchAnalyzer, BatchResult
+from kubectl_smart.batch import BatchAnalyzer, BatchResult, kubectl_resource_type
 from kubectl_smart.models import (
     DiagnosisResult,
     Issue,
@@ -130,6 +130,35 @@ async def test_get_resources_uses_configured_timeout(monkeypatch):
         "-l",
         "app=checkout",
     ]
+
+
+@pytest.mark.asyncio
+async def test_get_resources_supports_ingress_plural(monkeypatch):
+    """Batch mode should use the Kubernetes plural for supported Ingress resources."""
+    captured = {}
+
+    async def fake_to_thread(func, cmd, **kwargs):
+        captured["cmd"] = cmd
+        return SimpleNamespace(returncode=0, stdout="checkout-demo", stderr="")
+
+    monkeypatch.setattr("kubectl_smart.batch.asyncio.to_thread", fake_to_thread)
+
+    resources = await BatchAnalyzer()._get_resources(
+        ResourceKind.INGRESS,
+        namespace="default",
+        context=None,
+        label_selector=None,
+    )
+
+    assert resources == ["checkout-demo"]
+    assert captured["cmd"][:3] == ["kubectl", "get", "ingresses"]
+
+
+def test_kubectl_resource_type_uses_supported_plurals():
+    """Supported resource labels should match kubectl plurals."""
+    assert kubectl_resource_type(ResourceKind.POD) == "pods"
+    assert kubectl_resource_type(ResourceKind.REPLICASET) == "replicasets"
+    assert kubectl_resource_type(ResourceKind.INGRESS) == "ingresses"
 
 
 @pytest.mark.asyncio

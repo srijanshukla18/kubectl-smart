@@ -250,7 +250,7 @@ def diag(
 
     # Handle batch mode (--all)
     if all_resources:
-        from ..batch import BatchAnalyzer
+        from ..batch import BatchAnalyzer, kubectl_resource_type
         from ..renderers.json_renderer import JsonRenderer
 
         analyzer = BatchAnalyzer(max_concurrent=max_concurrent)
@@ -281,7 +281,7 @@ def diag(
                 ))
             else:
                 # Text output for batch
-                typer.echo(f"\n📋 BATCH DIAGNOSIS: {resource_type.value}s")
+                typer.echo(f"\n📋 BATCH DIAGNOSIS: {kubectl_resource_type(kind)}")
                 if namespace:
                     typer.echo(f"Namespace: {namespace}")
                 total_data_gaps = sum(len(r.data_gaps) for r in batch_result.results)

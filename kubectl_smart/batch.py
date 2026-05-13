@@ -22,6 +22,21 @@ from .models import DiagnosisResult, ResourceKind, SubjectCtx
 logger = structlog.get_logger(__name__)  # type: ignore[attr-defined]
 
 
+def kubectl_resource_type(kind: ResourceKind) -> str:
+    """Return the kubectl plural resource type for a supported kind."""
+    kind_to_kubectl = {
+        ResourceKind.POD: "pods",
+        ResourceKind.DEPLOYMENT: "deployments",
+        ResourceKind.STATEFULSET: "statefulsets",
+        ResourceKind.DAEMONSET: "daemonsets",
+        ResourceKind.JOB: "jobs",
+        ResourceKind.SERVICE: "services",
+        ResourceKind.REPLICASET: "replicasets",
+        ResourceKind.INGRESS: "ingresses",
+    }
+    return kind_to_kubectl.get(kind, kind.value.lower() + "s")
+
+
 @dataclass
 class BatchResult:
     """Result of batch operation"""
@@ -84,7 +99,8 @@ class BatchAnalyzer:
         resources = await self._get_resources(kind, namespace, context, label_selector)
 
         if not resources:
-            message = self._resource_list_error or f"No {kind.value}s found"
+            resource_label = kubectl_resource_type(kind).capitalize()
+            message = self._resource_list_error or f"No {resource_label} found"
             return BatchResult(
                 total_resources=0,
                 successful=0,
@@ -139,18 +155,7 @@ class BatchAnalyzer:
         """Get list of resource names"""
         self._resource_list_error = None
 
-        # Map ResourceKind to kubectl resource type
-        kind_to_kubectl = {
-            ResourceKind.POD: "pods",
-            ResourceKind.DEPLOYMENT: "deployments",
-            ResourceKind.STATEFULSET: "statefulsets",
-            ResourceKind.DAEMONSET: "daemonsets",
-            ResourceKind.JOB: "jobs",
-            ResourceKind.SERVICE: "services",
-            ResourceKind.REPLICASET: "replicasets",
-        }
-
-        resource_type = kind_to_kubectl.get(kind, kind.value.lower() + "s")
+        resource_type = kubectl_resource_type(kind)
 
         cmd = ["kubectl", "get", resource_type, "-o", "jsonpath={.items[*].metadata.name}"]
 
