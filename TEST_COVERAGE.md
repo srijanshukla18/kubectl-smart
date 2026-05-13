@@ -4,8 +4,8 @@
 
 - Unit test command: `uv run --extra dev pytest`
 - Coverage command: `uv run --extra dev pytest --cov=kubectl_smart --cov-report=term-missing`
-- Latest local result: `397 passed`
-- Latest measured coverage: `79%`
+- Latest local result: `398 passed`
+- Latest measured coverage: `82%`
 
 Coverage is measured, not estimated. The default `pytest` command does not enforce
 coverage so contributors get a clear functional signal first. Use the explicit
@@ -24,12 +24,13 @@ coverage command above when working on test depth.
 - CLI option parsing and backwards-compatible aliases
 - Batch diagnosis exit-code semantics, empty selections, list failures, and
   per-resource data-gap preservation
-- Watch-state extraction for warning, critical, and unexpected exit codes
+- Watch-state extraction for warning, critical, and unexpected exit codes, plus
+  diagnosis-detail change detection
 
 ## Known Coverage Gaps
 
-- `kubectl_smart/watch.py` long-running loop, terminal refresh, and signal
-  handling branches
+- `kubectl_smart/watch.py` long-running start/stop loop, terminal refresh, and
+  signal handling branches
 - Some command orchestration fallbacks and optional collector paths
 - Integration-heavy collector behavior that depends on live Kubernetes API
   availability, metrics-server, kubelet proxy access, and RBAC envelopes
