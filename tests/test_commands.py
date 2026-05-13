@@ -100,7 +100,7 @@ class TestDiagCommand:
         result = await cmd.execute(subject)
 
         assert result.exit_code == 2
-        assert "not found" in result.output
+        assert "Resource not present in collected data" in result.output
 
     @pytest.mark.asyncio
     @patch("kubectl_smart.cli.commands.collector_registry")
@@ -135,7 +135,7 @@ class TestDiagCommand:
         result = await cmd.execute(subject)
 
         assert result.exit_code == 2
-        assert "Resource not found" in result.output
+        assert "Resource not present in collected data" in result.output
         assert "DATA GAPS" in result.output
         assert "get pod unavailable (rbac): forbidden" in result.output
 

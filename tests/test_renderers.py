@@ -237,11 +237,30 @@ class TestRenderDiagnosis:
         result = DiagnosisResult(
             subject=sample_subject_ctx,
             resource=None,
+            data_gaps=[
+                'get pod unavailable (not_found): pods "test-pod" not found'
+            ],
             analysis_duration=0.5,
         )
         output = renderer.render_diagnosis(result)
 
-        assert "not found" in output
+        assert "Status: Resource not found" in output
+
+    def test_render_diagnosis_missing_resource_with_visibility_gap(
+        self, sample_subject_ctx
+    ):
+        """Test missing resources are not overclaimed when evidence is blocked."""
+        renderer = TerminalRenderer(colors_enabled=False)
+        result = DiagnosisResult(
+            subject=sample_subject_ctx,
+            resource=None,
+            data_gaps=["get pod unavailable (rbac): forbidden"],
+            analysis_duration=0.5,
+        )
+        output = renderer.render_diagnosis(result)
+
+        assert "Status: Resource not present in collected data" in output
+        assert "get pod unavailable (rbac): forbidden" in output
 
     def test_render_diagnosis_status_style(self, sample_subject_ctx):
         """Test diagnosis applies status styling"""

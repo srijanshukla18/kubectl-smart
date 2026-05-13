@@ -4,7 +4,7 @@
 
 - Unit test command: `uv run --extra dev pytest`
 - Coverage command: `uv run --extra dev pytest --cov=kubectl_smart --cov-report=term-missing`
-- Latest local result: `463 passed`
+- Latest local result: `464 passed`
 - Latest measured coverage: `84%`
 
 Coverage is measured, not estimated. The default `pytest` command does not enforce
@@ -35,6 +35,8 @@ coverage command above when working on test depth.
 - Certificate forecasts avoid Ingress TLS reference false positives when Secret
   inventory is incomplete or the referenced Secret exists
 - Terminal rendering, including root-cause and contributing-factor evidence
+- Terminal missing-resource wording distinguishes explicit Kubernetes not-found
+  evidence from incomplete visibility
 - JSON rendering contracts, including surfaced diagnostic issues, data gaps,
   per-resource batch completeness, and issue metadata/evidence completeness for
   automation, plus batch summaries

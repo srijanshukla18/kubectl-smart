@@ -61,7 +61,9 @@ class TerminalRenderer:
                 console.print(f"Status: [{status_style}]{result.resource.status}[/{status_style}]")
             else:
                 console.print(f"\n📋 DIAGNOSIS: {result.subject.full_name}")
-                console.print("Status: [red]Resource not found[/red]")
+                console.print(
+                    f"Status: [red]{self._missing_resource_status(result)}[/red]"
+                )
             
             # Root Cause - highest-score issue
             if result.root_cause:
@@ -113,6 +115,17 @@ class TerminalRenderer:
             console.print(f"\n⏱️  Analysis completed in {result.analysis_duration:.2f}s")
         
         return capture.get()
+
+    def _missing_resource_status(self, result: DiagnosisResult) -> str:
+        resource_type = result.subject.kind.value.lower()
+        has_not_found_evidence = any(
+            gap.startswith(f"get {resource_type} unavailable (not_found)")
+            or gap.startswith(f"describe {resource_type} unavailable (not_found)")
+            for gap in result.data_gaps
+        )
+        if has_not_found_evidence:
+            return "Resource not found"
+        return "Resource not present in collected data"
     
     def render_graph(self, result: GraphResult) -> str:    
         """Render graph result with ASCII visualization"""
