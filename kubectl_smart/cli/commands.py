@@ -433,11 +433,18 @@ class DiagCommand(BaseCommand):
         actions = []
         reason = (root_cause.reason or '').lower() if root_cause else ''
         raw_message = root_cause.message if root_cause and root_cause.message else ''
+        evidence_text = "\n".join(root_cause.evidence) if root_cause else ''
+        diagnostic_text = f"{raw_message}\n{evidence_text}"
+        diagnostic_lower = diagnostic_text.lower()
         message = raw_message.lower()
         missing_config_ref = bool(
             root_cause
-            and 'not found' in message
-            and ('secret "' in message or 'configmap "' in message or 'config map "' in message)
+            and 'not found' in diagnostic_lower
+            and (
+                'secret "' in diagnostic_lower
+                or 'configmap "' in diagnostic_lower
+                or 'config map "' in diagnostic_lower
+            )
         )
         
         # Generic actions based on resource status
@@ -448,7 +455,7 @@ class DiagCommand(BaseCommand):
         
         # Actions based on root cause
         if root_cause:
-            missing_ref = re.search(r'(secret|configmap|config map) "([^"]+)" not found', raw_message, re.IGNORECASE)
+            missing_ref = re.search(r'(secret|configmap|config map) "([^"]+)" not found', diagnostic_text, re.IGNORECASE)
             if missing_ref:
                 ref_type = missing_ref.group(1).replace(' ', '').lower()
                 ref_name = missing_ref.group(2)

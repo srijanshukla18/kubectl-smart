@@ -336,6 +336,36 @@ class TestDiagCommand:
         assert any("Create or restore Secret runtime-token" in action for action in actions)
         assert not any("kubectl logs" in action for action in actions)
 
+    def test_generate_suggested_actions_missing_secret_from_evidence(self):
+        """Test pod-status evidence can drive concrete missing Secret actions."""
+        from kubectl_smart.models import Issue, IssueSeverity
+
+        cmd = DiagCommand()
+        resource = ResourceRecord(
+            kind=ResourceKind.POD,
+            name="pod",
+            uid="uid-123",
+            namespace="default",
+            status="Pending",
+        )
+        root_cause = Issue(
+            resource_uid="uid-123",
+            title="Resource Status: CreateContainerConfigError",
+            description="Pod pod is in CreateContainerConfigError state",
+            severity=IssueSeverity.CRITICAL,
+            score=90.0,
+            reason="StatusCreateContainerConfigError",
+            message="Resource is in unhealthy state: CreateContainerConfigError",
+            evidence=[
+                'Container worker waiting: CreateContainerConfigError - secret "runtime-token" not found'
+            ],
+        )
+        actions = cmd._generate_suggested_actions(resource, root_cause, [])
+
+        assert actions[0] == "Verify missing Secret: kubectl get secret runtime-token -n default"
+        assert any("Create or restore Secret runtime-token" in action for action in actions)
+        assert not any("kubectl logs" in action for action in actions)
+
     def test_generate_suggested_actions_log_failure(self):
         """Test log-derived root causes carry log review actions."""
         from kubectl_smart.models import Issue, IssueSeverity

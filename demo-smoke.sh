@@ -122,6 +122,11 @@ assert_contains "$restricted_diag" "DATA GAPS (2)" "restricted diag gap count"
 assert_contains "$restricted_diag" "events events unavailable (rbac)" "restricted event gap"
 assert_contains "$restricted_diag" "logs pods unavailable (rbac)" "restricted log gap"
 
+restricted_fulfillment="$(capture restricted_fulfillment env KUBECONFIG="$RBAC_KUBECONFIG" kubectl-smart diag pod fulfillment-worker-0 -n "$NAMESPACE")"
+assert_status restricted_fulfillment 2
+assert_contains "$restricted_fulfillment" "Verify missing Secret: kubectl get secret missing-fulfillment-runtime-token" "restricted missing Secret action"
+assert_contains "$restricted_fulfillment" "DATA GAPS (2)" "restricted fulfillment gap count"
+
 log "Checking restricted batch JSON preserves per-resource data gaps..."
 restricted_batch_json="$(capture restricted_batch_json env KUBECONFIG="$RBAC_KUBECONFIG" kubectl-smart diag pod --all -n "$NAMESPACE" -o json)"
 assert_status restricted_batch_json 2
