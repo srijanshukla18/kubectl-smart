@@ -4,7 +4,7 @@
 
 - Unit test command: `uv run --extra dev pytest`
 - Coverage command: `uv run --extra dev pytest --cov=kubectl_smart --cov-report=term-missing`
-- Latest local result: `422 passed`
+- Latest local result: `424 passed`
 - Latest measured coverage: `83%`
 
 Coverage is measured, not estimated. The default `pytest` command does not enforce
@@ -33,7 +33,7 @@ coverage command above when working on test depth.
 - Command help/short-option contracts, including `top -h` help and `top -H`
   horizon
 - Batch diagnosis exit-code semantics, empty selections, list failures, and
-  per-resource data-gap preservation
+  per-resource data-gap/not-found preservation
 - Batch kubectl plural handling for supported resource kinds
 - Watch-state extraction for warning, critical, and unexpected exit codes, plus
   diagnosis-detail change detection

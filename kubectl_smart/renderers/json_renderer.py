@@ -138,9 +138,9 @@ class JsonRenderer:
         failed = batch_info.get("failed", 0)
         exit_code = batch_info.get("exit_code")
         if exit_code is None:
-            if failed or any(r.critical_issues for r in results):
+            if failed or any(r.exit_code == 2 for r in results):
                 exit_code = 2
-            elif any(r.warning_issues for r in results):
+            elif any(r.exit_code == 1 for r in results):
                 exit_code = 1
             else:
                 exit_code = 0

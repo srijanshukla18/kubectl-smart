@@ -220,6 +220,13 @@ async def test_diagnose_all_reports_empty_resource_list_as_message(monkeypatch):
 def test_batch_result_exit_code_uses_highest_severity():
     """Batch exit code should distinguish warnings from critical failures."""
     subject = SubjectCtx(kind=ResourceKind.POD, name="api", namespace="default")
+    resource = ResourceRecord(
+        kind=ResourceKind.POD,
+        name="api",
+        uid="api-uid",
+        namespace="default",
+        status="Unknown",
+    )
     warning_issue = Issue(
         resource_uid="api-uid",
         title="Resource Status: Unknown",
@@ -239,15 +246,23 @@ def test_batch_result_exit_code_uses_highest_severity():
 
     warning_result = DiagnosisResult(
         subject=subject,
+        resource=resource,
         issues=[warning_issue],
         analysis_duration=0.1,
     )
     critical_result = DiagnosisResult(
         subject=subject,
+        resource=resource,
         issues=[critical_issue],
+        analysis_duration=0.1,
+    )
+    missing_result = DiagnosisResult(
+        subject=subject,
+        resource=None,
         analysis_duration=0.1,
     )
 
     assert BatchResult(1, 1, 0, results=[warning_result]).exit_code == 1
     assert BatchResult(1, 1, 0, results=[critical_result]).exit_code == 2
+    assert BatchResult(1, 1, 0, results=[missing_result]).exit_code == 2
     assert BatchResult(0, 0, 1, errors=[{"message": "forbidden"}]).exit_code == 2

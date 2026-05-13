@@ -295,7 +295,9 @@ def diag(
                 for result in batch_result.results:
                     status = result.resource.status if result.resource else "Unknown"
                     issues_str = ""
-                    if result.critical_issues:
+                    if result.resource is None:
+                        issues_str = "❌ not found"
+                    elif result.critical_issues:
                         issues_str = f"🔴 {len(result.critical_issues)} critical"
                     elif result.warning_issues:
                         issues_str = f"🟡 {len(result.warning_issues)} warning"

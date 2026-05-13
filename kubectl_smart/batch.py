@@ -51,9 +51,9 @@ class BatchResult:
     @property
     def exit_code(self) -> int:
         """Return CLI exit code for aggregate batch diagnosis."""
-        if self.failed or any(result.critical_issues for result in self.results):
+        if self.failed or any(result.exit_code == 2 for result in self.results):
             return 2
-        if any(result.warning_issues for result in self.results):
+        if any(result.exit_code == 1 for result in self.results):
             return 1
         return 0
 

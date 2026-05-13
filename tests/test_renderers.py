@@ -793,6 +793,24 @@ class TestJsonRenderer:
         assert parsed["results"][0]["diagnostic_issues"][0]["title"] == issue.title
         assert '"exit_code": 1' in output
 
+    def test_render_batch_infers_not_found_exit_code(self, sample_subject_ctx):
+        """Test JSON batch summary honors per-resource not-found failures."""
+        result = DiagnosisResult(
+            subject=sample_subject_ctx,
+            resource=None,
+            analysis_duration=1.0,
+        )
+
+        output = JsonRenderer().render_batch(
+            [result],
+            {"total": 1, "successful": 1, "failed": 0},
+        )
+
+        parsed = json.loads(output)
+        assert parsed["summary"]["exit_code"] == 2
+        assert parsed["results"][0]["status"] is None
+        assert parsed["results"][0]["exit_code"] == 2
+
     def test_render_diagnosis_uses_warning_exit_code(
         self, sample_subject_ctx, sample_resource_record
     ):

@@ -405,6 +405,32 @@ class TestDiagCommand:
         assert "None: None" not in result.stdout
 
     @patch("kubectl_smart.batch.BatchAnalyzer.diagnose_all")
+    def test_diag_all_exits_nonzero_on_not_found_result(self, mock_diagnose_all):
+        """Test per-resource not-found diagnoses keep batch output non-green."""
+        from kubectl_smart.batch import BatchResult
+        from kubectl_smart.models import DiagnosisResult, ResourceKind, SubjectCtx
+
+        subject = SubjectCtx(kind=ResourceKind.POD, name="vanished", namespace="default")
+        missing_result = DiagnosisResult(
+            subject=subject,
+            resource=None,
+            analysis_duration=0.1,
+        )
+        mock_diagnose_all.return_value = BatchResult(
+            total_resources=1,
+            successful=1,
+            failed=0,
+            results=[missing_result],
+            duration=0.1,
+        )
+
+        result = runner.invoke(app, ["diag", "pod", "--all", "-n", "default"])
+
+        assert result.exit_code == 2
+        assert "vanished: Unknown | ❌ not found" in result.stdout
+        assert "✅ healthy" not in result.stdout
+
+    @patch("kubectl_smart.batch.BatchAnalyzer.diagnose_all")
     def test_diag_all_json_exits_nonzero_on_batch_errors(self, mock_diagnose_all):
         """Test JSON batch output carries nonzero exit code for batch failures."""
         from kubectl_smart.batch import BatchResult
