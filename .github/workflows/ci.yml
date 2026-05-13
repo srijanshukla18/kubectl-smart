@@ -55,3 +55,8 @@ jobs:
           uv run --frozen --extra dev pytest
           -W error::RuntimeWarning
           -W error::DeprecationWarning
+
+      - name: Run CLI smoke checks
+        run: |
+          ./kubectl-smart --version
+          uv run --frozen kubectl-smart --version
