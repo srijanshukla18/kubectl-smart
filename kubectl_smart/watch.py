@@ -71,6 +71,11 @@ class ResourceWatcher:
             renderer: Renderer to use for output
             output_format: Output format (text or json)
         """
+        if renderer is None:
+            from .renderers.terminal import TerminalRenderer
+
+            renderer = TerminalRenderer()
+
         self.running = True
         logger.info("Started watching resource", resource=self.subject.full_name)
 
@@ -105,7 +110,7 @@ class ResourceWatcher:
             from .cli.commands import DiagCommand
 
             command = DiagCommand()
-            result = await command.execute(self.subject)
+            result = await command.execute_raw(self.subject)
 
             # Build current state
             current_state = self._extract_state(result)
