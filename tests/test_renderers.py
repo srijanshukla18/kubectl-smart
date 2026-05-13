@@ -632,6 +632,8 @@ class TestJsonRenderer:
             {"total": 1, "successful": 1, "failed": 0},
         )
 
+        assert '"critical": 0' in output
+        assert '"warning": 1' in output
         assert '"warning_count": 1' in output
         assert '"exit_code": 1' in output
 

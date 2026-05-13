@@ -135,6 +135,8 @@ class JsonRenderer:
                 exit_code = 1
             else:
                 exit_code = 0
+        critical_count = sum(len(r.critical_issues) for r in results)
+        warning_count = sum(len(r.warning_issues) for r in results)
 
         output = {
             "type": "batch_diagnosis",
@@ -142,6 +144,8 @@ class JsonRenderer:
                 "total_resources": batch_info.get("total", len(results)),
                 "successful": batch_info.get("successful", len(results)),
                 "failed": failed,
+                "critical": critical_count,
+                "warning": warning_count,
                 "duration_seconds": batch_info.get("duration", 0),
                 "data_gaps": sum(len(r.data_gaps) for r in results),
                 "max_concurrent": batch_info.get("max_concurrent"),
