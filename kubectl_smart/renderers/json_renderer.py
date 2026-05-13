@@ -239,6 +239,7 @@ class JsonRenderer:
             "timestamp": issue.timestamp.isoformat() if issue.timestamp else None,
             "suggested_actions": issue.suggested_actions,
             "evidence": issue.evidence,
+            "metadata": issue.metadata,
         }
 
     def _serialize_event(self, event: ResourceRecord) -> Dict[str, Any]:

@@ -664,6 +664,37 @@ class TestJsonRenderer:
         assert 'secret \\"token\\" not found' in output
         assert '"data_gaps"' in output
 
+    def test_render_diagnosis_includes_issue_metadata(
+        self, sample_subject_ctx, sample_resource_record
+    ):
+        """Test JSON diagnosis keeps structured issue metadata for automation."""
+        issue = Issue(
+            resource_uid=sample_resource_record.uid,
+            title="Child pod failed",
+            description="Deployment child pod is unhealthy",
+            severity=IssueSeverity.CRITICAL,
+            score=95.0,
+            reason="ChildLogFailure",
+            message="Pod/default/api-abc: panic",
+            metadata={
+                "child_resource": "Pod/default/api-abc",
+                "source_issue_resource_uid": "pod-uid",
+            },
+        )
+        result = DiagnosisResult(
+            subject=sample_subject_ctx,
+            resource=sample_resource_record,
+            issues=[issue],
+            root_cause=issue,
+            analysis_duration=1.0,
+        )
+
+        output = JsonRenderer().render_diagnosis(result)
+
+        assert '"metadata"' in output
+        assert '"child_resource": "Pod/default/api-abc"' in output
+        assert '"source_issue_resource_uid": "pod-uid"' in output
+
     def test_render_diagnosis_includes_data_gap_summary(
         self, sample_subject_ctx, sample_resource_record
     ):
