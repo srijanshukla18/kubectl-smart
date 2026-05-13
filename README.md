@@ -168,6 +168,9 @@ The implementation features:
 # Run unit tests
 uv run --extra dev pytest
 
+# Match the CI warning-as-error gate
+uv run --frozen --extra dev pytest -W error::RuntimeWarning -W error::DeprecationWarning
+
 # Optional: run coverage
 uv run --extra dev pytest --cov=kubectl_smart --cov-report=term-missing
 
