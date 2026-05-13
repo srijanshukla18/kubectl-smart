@@ -45,6 +45,11 @@ Output and modes:
 - `--context` pins the kubectl context. For repeatable local demos/tests, you can also set `KUBECTL_SMART_CONTEXT=kind-kubectl-smart-demo`.
 - Exit code is `0` when no warning or critical issues are found, `1` for warning-only diagnoses, and `2` for critical issues or command errors.
 
+JSON automation contract:
+- `exit_code` mirrors the process exit status for single-resource and batch diagnosis.
+- `analysis_complete: false` and `data_gap_count > 0` mean one or more collectors were unavailable; inspect `data_gaps` before treating a clean result as complete.
+- `diagnostic_issues` is the deduplicated set that backs `issue_summary`, root-cause severity, and exit-code decisions. `issues` remains the raw scored issue list.
+
 ### 2. `graph` - Dependency Visualization
 ```bash
 kubectl-smart graph pod my-app --upstream
