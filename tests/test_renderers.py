@@ -659,10 +659,39 @@ class TestJsonRenderer:
         )
 
         output = JsonRenderer().render_diagnosis(result)
+        parsed = json.loads(output)
 
         assert '"evidence"' in output
         assert 'secret \\"token\\" not found' in output
         assert '"data_gaps"' in output
+        assert parsed["root_cause"]["evidence_count"] == 1
+        assert parsed["root_cause"]["evidence_complete"] is True
+
+    def test_render_diagnosis_marks_json_issue_without_evidence_incomplete(
+        self, sample_subject_ctx, sample_resource_record
+    ):
+        """Test automation can detect root-cause claims without attached evidence."""
+        issue = Issue(
+            resource_uid=sample_resource_record.uid,
+            title="Warning Without Evidence",
+            description="Warning issue",
+            severity=IssueSeverity.WARNING,
+            score=70.0,
+            reason="Warning",
+            message="Warning",
+        )
+        result = DiagnosisResult(
+            subject=sample_subject_ctx,
+            resource=sample_resource_record,
+            root_cause=issue,
+            analysis_duration=1.0,
+        )
+
+        parsed = json.loads(JsonRenderer().render_diagnosis(result))
+
+        assert parsed["root_cause"]["evidence"] == []
+        assert parsed["root_cause"]["evidence_count"] == 0
+        assert parsed["root_cause"]["evidence_complete"] is False
 
     def test_render_diagnosis_includes_issue_metadata(
         self, sample_subject_ctx, sample_resource_record

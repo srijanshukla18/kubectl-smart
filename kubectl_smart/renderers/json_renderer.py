@@ -240,6 +240,8 @@ class JsonRenderer:
             "timestamp": issue.timestamp.isoformat() if issue.timestamp else None,
             "suggested_actions": issue.suggested_actions,
             "evidence": issue.evidence,
+            "evidence_count": len(issue.evidence),
+            "evidence_complete": bool(issue.evidence),
             "metadata": issue.metadata,
         }
 

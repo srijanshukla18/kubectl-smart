@@ -4,7 +4,7 @@
 
 - Unit test command: `uv run --extra dev pytest`
 - Coverage command: `uv run --extra dev pytest --cov=kubectl_smart --cov-report=term-missing`
-- Latest local result: `457 passed`
+- Latest local result: `458 passed`
 - Latest measured coverage: `84%`
 
 Coverage is measured, not estimated. The default `pytest` command does not enforce
@@ -34,7 +34,7 @@ coverage command above when working on test depth.
   inventory is incomplete or the referenced Secret exists
 - Terminal rendering, including root-cause and contributing-factor evidence
 - JSON rendering contracts, including surfaced diagnostic issues, data gaps, and
-  issue metadata for automation, plus batch summaries
+  issue metadata/evidence completeness for automation, plus batch summaries
 - JSON error responses preserve data gaps and mark analysis incomplete for
   automation
 - CLI option parsing and backwards-compatible aliases
