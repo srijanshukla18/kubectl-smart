@@ -87,6 +87,53 @@ assert_contains() {
   fi
 }
 
+assert_missing_diag_json_contract() {
+  local file="$1"
+  if ! uv run python3 - "$file" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as fh:
+    data = json.load(fh)
+
+assert data["type"] == "diagnosis"
+assert data["resource"] is None
+assert data["status"] is None
+assert data["analysis_complete"] is False
+assert data["exit_code"] == 2
+assert data["data_gap_count"] > 0
+PY
+  then
+    echo "---- invalid missing-resource diagnosis JSON ----" >&2
+    cat "$file" >&2
+    fail "Missing-resource diagnosis JSON contract failed"
+  fi
+}
+
+assert_restricted_batch_json_contract() {
+  local file="$1"
+  if ! uv run python3 - "$file" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as fh:
+    data = json.load(fh)
+
+assert data["type"] == "batch_diagnosis"
+assert data["summary"]["analysis_complete"] is False
+assert data["summary"]["data_gaps"] == 6
+assert len(data["results"]) == 3
+for result in data["results"]:
+    assert result["analysis_complete"] is False
+    assert result["data_gap_count"] == 2
+PY
+  then
+    echo "---- invalid restricted batch JSON ----" >&2
+    cat "$file" >&2
+    fail "Restricted batch JSON contract failed"
+  fi
+}
+
 guard_context
 log "Using kubectl-smart command: $KUBECTL_SMART_CMD_STRING"
 tmpdir="$(mktemp -d)"
@@ -150,6 +197,11 @@ assert_contains "$selector_batch" "Selector: demo.kubectl-smart/story=checkout-c
 assert_contains "$selector_batch" "checkout-api-0:" "label-selected checkout pod"
 assert_contains "$selector_batch" "inventory-db-canary" "label-selected inventory pod"
 
+log "Checking missing-resource JSON marks diagnosis incomplete..."
+missing_diag_json="$(capture missing_diag_json "${KUBECTL_SMART_CMD[@]}" diag pod kubectl-smart-definitely-missing -n "$NAMESPACE" -o json --context "$KUBECTL_SMART_CONTEXT")"
+assert_status missing_diag_json 2
+assert_missing_diag_json_contract "$missing_diag_json"
+
 if [ ! -f "$RBAC_KUBECONFIG" ]; then
   refresh_restricted_kubeconfig
 fi
@@ -198,5 +250,6 @@ assert_contains "$restricted_batch_json" '"data_gaps": 6' "restricted batch tota
 assert_contains "$restricted_batch_json" '"analysis_complete": false' "restricted batch incomplete summary"
 assert_contains "$restricted_batch_json" '"data_gap_count": 2' "restricted batch per-resource gaps"
 assert_contains "$restricted_batch_json" 'cannot get resource \"pods/log\"' "restricted batch log evidence"
+assert_restricted_batch_json_contract "$restricted_batch_json"
 
 log "Demo smoke passed."
