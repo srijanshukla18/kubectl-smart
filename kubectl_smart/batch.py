@@ -10,6 +10,7 @@ Usage:
 """
 
 import asyncio
+import re
 import subprocess
 import time
 from dataclasses import dataclass, field
@@ -20,6 +21,8 @@ import structlog
 from .models import DiagnosisResult, ResourceKind, SubjectCtx
 
 logger = structlog.get_logger(__name__)  # type: ignore[attr-defined]
+
+DNS_LABEL = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
 
 
 def kubectl_resource_type(kind: ResourceKind) -> str:
@@ -158,6 +161,15 @@ class BatchAnalyzer:
         resource_type = kubectl_resource_type(kind)
 
         cmd = ["kubectl", "get", resource_type, "-o", "jsonpath={.items[*].metadata.name}"]
+
+        if namespace and (len(namespace) > 63 or not DNS_LABEL.fullmatch(namespace)):
+            self._resource_list_error = "Invalid namespace supplied"
+            logger.warning(self._resource_list_error)
+            return []
+        if context and any(ord(char) < 32 or ord(char) == 127 for char in context):
+            self._resource_list_error = "Invalid context supplied"
+            logger.warning(self._resource_list_error)
+            return []
 
         if namespace:
             cmd.extend(["-n", namespace])

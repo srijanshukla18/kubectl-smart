@@ -154,6 +154,56 @@ async def test_get_resources_supports_ingress_plural(monkeypatch):
     assert captured["cmd"][:3] == ["kubectl", "get", "ingresses"]
 
 
+@pytest.mark.asyncio
+async def test_get_resources_rejects_invalid_namespace_without_kubectl(monkeypatch):
+    """Batch resource discovery should share collector namespace guardrails."""
+    called = False
+
+    async def fake_to_thread(*_args, **_kwargs):
+        nonlocal called
+        called = True
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr("kubectl_smart.batch.asyncio.to_thread", fake_to_thread)
+
+    analyzer = BatchAnalyzer()
+    resources = await analyzer._get_resources(
+        ResourceKind.POD,
+        namespace="bad_namespace",
+        context=None,
+        label_selector=None,
+    )
+
+    assert resources == []
+    assert analyzer._resource_list_error == "Invalid namespace supplied"
+    assert called is False
+
+
+@pytest.mark.asyncio
+async def test_get_resources_rejects_invalid_context_without_kubectl(monkeypatch):
+    """Batch resource discovery should reject control characters in context."""
+    called = False
+
+    async def fake_to_thread(*_args, **_kwargs):
+        nonlocal called
+        called = True
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr("kubectl_smart.batch.asyncio.to_thread", fake_to_thread)
+
+    analyzer = BatchAnalyzer()
+    resources = await analyzer._get_resources(
+        ResourceKind.POD,
+        namespace="default",
+        context="kind-demo\nprod",
+        label_selector=None,
+    )
+
+    assert resources == []
+    assert analyzer._resource_list_error == "Invalid context supplied"
+    assert called is False
+
+
 def test_kubectl_resource_type_uses_supported_plurals():
     """Supported resource labels should match kubectl plurals."""
     assert kubectl_resource_type(ResourceKind.POD) == "pods"
