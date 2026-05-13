@@ -96,6 +96,32 @@ async def test_execute_diagnosis_uses_diag_raw_path(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_execute_diagnosis_uses_configured_collector_timeout(monkeypatch):
+    """Batch per-resource diagnosis should honor explicit collector timeout."""
+    captured = {}
+    subject = SubjectCtx(
+        kind=ResourceKind.POD,
+        name="checkout-api-0",
+        namespace="default",
+    )
+
+    async def fake_execute_raw(self, received_subject):
+        captured["timeout"] = self.config.collector_timeout
+        assert received_subject == subject
+        return DiagnosisResult(subject=subject, analysis_duration=0.1)
+
+    monkeypatch.setattr(
+        "kubectl_smart.cli.commands.DiagCommand.execute_raw",
+        fake_execute_raw,
+    )
+
+    result = await BatchAnalyzer(collector_timeout=2.5)._execute_diagnosis(subject)
+
+    assert result.subject == subject
+    assert captured["timeout"] == 2.5
+
+
+@pytest.mark.asyncio
 async def test_get_resources_uses_configured_timeout(monkeypatch):
     """Batch resource discovery should honor the configured kubectl timeout."""
     captured = {}

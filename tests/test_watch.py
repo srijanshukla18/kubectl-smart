@@ -154,6 +154,9 @@ async def test_check_resource_uses_raw_diagnosis_for_change_detection(
     calls = {"execute": 0, "execute_raw": 0}
 
     class FakeDiagCommand:
+        def __init__(self, *args, **kwargs):
+            pass
+
         async def execute(self, received_subject):
             calls["execute"] += 1
             raise AssertionError("watch mode should not use rendered diagnosis")
@@ -207,6 +210,9 @@ async def test_check_resource_records_failures_and_recovery(monkeypatch, capsys)
     ]
 
     class FakeDiagCommand:
+        def __init__(self, *args, **kwargs):
+            pass
+
         async def execute_raw(self, received_subject):
             assert received_subject == subject
             result = results.pop(0)
@@ -240,3 +246,43 @@ async def test_check_resource_records_failures_and_recovery(monkeypatch, capsys)
         "check_failed",
         "check_recovered",
     ]
+
+
+@pytest.mark.asyncio
+async def test_check_resource_passes_collector_timeout(monkeypatch):
+    """Watch mode should pass explicit collector timeouts to diag."""
+    subject = SubjectCtx(kind=ResourceKind.POD, name="api", namespace="default")
+    resource = ResourceRecord(
+        kind=ResourceKind.POD,
+        name="api",
+        uid="api-uid",
+        namespace="default",
+        status="Running",
+    )
+    captured = {}
+
+    class FakeDiagCommand:
+        def __init__(self, config=None):
+            captured["timeout"] = config.collector_timeout
+
+        async def execute_raw(self, received_subject):
+            assert received_subject == subject
+            return DiagnosisResult(
+                subject=subject,
+                resource=resource,
+                analysis_duration=0.1,
+            )
+
+    class FakeRenderer:
+        def render_diagnosis(self, result):
+            return f"rendered {result.resource.name}"
+
+    monkeypatch.setattr(
+        "kubectl_smart.cli.commands.DiagCommand",
+        FakeDiagCommand,
+    )
+
+    watcher = ResourceWatcher(subject, collector_timeout=2.5)
+    await watcher._check_resource(FakeRenderer(), "text")
+
+    assert captured["timeout"] == 2.5

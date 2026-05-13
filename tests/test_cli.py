@@ -223,6 +223,39 @@ class TestDiagCommand:
         assert result.exit_code == 0
         assert mock_execute.await_count == 1
 
+    def test_diag_passes_timeout_to_command_config(self):
+        """Test --timeout configures single-resource collectors."""
+        from kubectl_smart.cli.commands import CommandResult
+
+        captured = {}
+
+        class FakeDiagCommand:
+            def __init__(self, config=None):
+                captured["timeout"] = config.collector_timeout
+                self.data_gaps = []
+
+            async def execute(self, _subject):
+                return CommandResult(output="Output", exit_code=0)
+
+        with patch("kubectl_smart.cli.commands.DiagCommand", FakeDiagCommand):
+            result = runner.invoke(
+                app,
+                ["diag", "pod", "api", "-n", "default", "--timeout", "2.5"],
+            )
+
+        assert result.exit_code == 0
+        assert captured["timeout"] == 2.5
+
+    def test_diag_rejects_invalid_timeout(self):
+        """Test --timeout must be positive."""
+        result = runner.invoke(
+            app,
+            ["diag", "pod", "api", "--timeout", "0"],
+        )
+
+        assert result.exit_code == 2
+        assert "--timeout must be greater than 0 seconds" in result.stderr
+
     @patch("kubectl_smart.cli.commands.DiagCommand.execute_raw")
     def test_diag_json_error_stays_json(self, mock_execute_raw):
         """Test JSON diag emits machine-readable errors."""
@@ -244,7 +277,7 @@ class TestDiagCommand:
     def test_diag_json_error_preserves_command_data_gaps(self):
         """Test JSON diag errors expose partial collector gaps."""
         class FailingDiagCommand:
-            def __init__(self):
+            def __init__(self, *args, **kwargs):
                 self.data_gaps = ["events events unavailable (rbac): forbidden"]
 
             async def execute_raw(self, _subject):
@@ -377,6 +410,31 @@ class TestDiagCommand:
         assert "Errors" not in result.stdout
 
     @patch("kubectl_smart.batch.BatchAnalyzer")
+    def test_diag_all_passes_timeout_to_batch_analyzer(self, mock_batch_analyzer):
+        """Test --timeout configures batch list and diagnosis collectors."""
+        from kubectl_smart.batch import BatchResult
+
+        analyzer = mock_batch_analyzer.return_value
+        analyzer.diagnose_all = AsyncMock(
+            return_value=BatchResult(
+                total_resources=0,
+                successful=0,
+                failed=0,
+                messages=[{"message": "No Pods found"}],
+                duration=0.1,
+            )
+        )
+
+        result = runner.invoke(
+            app,
+            ["diag", "pod", "--all", "-n", "default", "--timeout", "3"],
+        )
+
+        assert result.exit_code == 0
+        assert mock_batch_analyzer.call_args.kwargs["kubectl_timeout"] == 3.0
+        assert mock_batch_analyzer.call_args.kwargs["collector_timeout"] == 3.0
+
+    @patch("kubectl_smart.batch.BatchAnalyzer")
     def test_diag_all_passes_label_selector(self, mock_batch_analyzer):
         """Test --selector narrows batch diagnosis resource discovery."""
         from kubectl_smart.batch import BatchResult
@@ -427,6 +485,29 @@ class TestDiagCommand:
 
         assert result.exit_code == 2
         assert "Label selector must not contain control characters" in result.stderr
+
+    def test_diag_watch_passes_timeout_to_watcher(self):
+        """Test --timeout configures watch-mode diagnosis collectors."""
+        captured = {}
+
+        class FakeWatcher:
+            def __init__(self, subject, interval_seconds, collector_timeout=None):
+                captured["subject"] = subject
+                captured["interval_seconds"] = interval_seconds
+                captured["collector_timeout"] = collector_timeout
+
+            async def start(self, output_format="text"):
+                captured["output_format"] = output_format
+
+        with patch("kubectl_smart.watch.ResourceWatcher", FakeWatcher):
+            result = runner.invoke(
+                app,
+                ["diag", "pod", "api", "--watch", "--timeout", "4"],
+            )
+
+        assert result.exit_code == 0
+        assert captured["collector_timeout"] == 4.0
+        assert captured["output_format"] == "text"
 
     @patch("kubectl_smart.batch.BatchAnalyzer.diagnose_all")
     def test_diag_all_ingress_uses_kubectl_plural_header(self, mock_diagnose_all):

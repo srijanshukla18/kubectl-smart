@@ -50,6 +50,7 @@ class ResourceWatcher:
         subject: SubjectCtx,
         interval_seconds: float = 5.0,
         on_change: Optional[Callable[[WatchEvent], None]] = None,
+        collector_timeout: Optional[float] = None,
     ):
         """Initialize resource watcher
 
@@ -57,10 +58,12 @@ class ResourceWatcher:
             subject: Resource to watch
             interval_seconds: Polling interval
             on_change: Optional callback for change events
+            collector_timeout: Optional per-kubectl collector timeout
         """
         self.subject = subject
         self.interval_seconds = interval_seconds
         self.on_change = on_change
+        self.collector_timeout = collector_timeout
         self.running = False
         self.previous_state: Optional[WatchState] = None
         self.events: List[WatchEvent] = []
@@ -111,8 +114,14 @@ class ResourceWatcher:
         try:
             # Lazy import to avoid circular dependency
             from .cli.commands import DiagCommand
+            from .models import AnalysisConfig
 
-            command = DiagCommand()
+            config = (
+                AnalysisConfig(collector_timeout=self.collector_timeout)
+                if self.collector_timeout is not None
+                else None
+            )
+            command = DiagCommand(config=config)
             result = await command.execute_raw(self.subject)
 
             # Build current state

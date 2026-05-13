@@ -64,17 +64,25 @@ class BatchResult:
 class BatchAnalyzer:
     """Batch analyzer for processing multiple resources concurrently"""
 
-    def __init__(self, max_concurrent: int = 5, kubectl_timeout: Optional[float] = None):
+    def __init__(
+        self,
+        max_concurrent: int = 5,
+        kubectl_timeout: Optional[float] = None,
+        collector_timeout: Optional[float] = None,
+    ):
         """Initialize batch analyzer
 
         Args:
             max_concurrent: Maximum number of concurrent diagnoses
             kubectl_timeout: Timeout for the initial kubectl resource list
+            collector_timeout: Timeout for per-resource diagnosis collectors
         """
         from .models import AnalysisConfig
 
+        default_timeout = AnalysisConfig().collector_timeout
         self.max_concurrent = max_concurrent
-        self.kubectl_timeout = kubectl_timeout or AnalysisConfig().collector_timeout
+        self.kubectl_timeout = kubectl_timeout if kubectl_timeout is not None else default_timeout
+        self.collector_timeout = collector_timeout
         self.semaphore = asyncio.Semaphore(max_concurrent)
         self._resource_list_error: Optional[str] = None
 
@@ -243,5 +251,11 @@ class BatchAnalyzer:
     async def _execute_diagnosis(self, subject: SubjectCtx) -> DiagnosisResult:
         """Execute diagnosis and return DiagnosisResult directly"""
         from .cli.commands import DiagCommand
+        from .models import AnalysisConfig
 
-        return await DiagCommand().execute_raw(subject)
+        config = (
+            AnalysisConfig(collector_timeout=self.collector_timeout)
+            if self.collector_timeout is not None
+            else None
+        )
+        return await DiagCommand(config=config).execute_raw(subject)

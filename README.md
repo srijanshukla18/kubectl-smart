@@ -38,6 +38,7 @@ kubectl-smart diag pod failing-pod -o json
 kubectl-smart diag pod failing-pod --watch --interval 5
 kubectl-smart diag pod --all -n production --max-concurrent 2
 kubectl-smart diag pod --all -n production -l app=checkout
+kubectl-smart diag pod failing-pod --timeout 3
 ```
 **Purpose**: One-shot diagnosis that surfaces root cause and contributing factors
 
@@ -56,6 +57,8 @@ Output and modes:
 - `--max-concurrent` controls batch diagnosis concurrency so you can reduce API pressure in degraded clusters.
 - `--selector`/`-l` limits `--all` to matching labels, which is useful for
   narrowing a large namespace during incident triage.
+- `--timeout` sets the per-kubectl collector timeout, including the initial
+  batch list call and each per-resource diagnosis in `--all` mode.
 - `--context` pins the kubectl context. For repeatable local demos/tests, you can also set `KUBECTL_SMART_CONTEXT=kind-kubectl-smart-demo`.
 - Exit code is `0` when no warning or critical issues are found, `1` for warning-only diagnoses, and `2` for critical issues or command errors.
 

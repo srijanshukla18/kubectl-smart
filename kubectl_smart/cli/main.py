@@ -117,6 +117,13 @@ def _validate_label_selector(label_selector: Optional[str]) -> None:
         raise typer.BadParameter("Label selector must not contain control characters.")
 
 
+def _validate_timeout(timeout: Optional[float]) -> None:
+    if timeout is None:
+        return
+    if timeout <= 0:
+        raise typer.BadParameter("Timeout must be greater than 0 seconds.")
+
+
 def _resolve_context(context: Optional[str]) -> Optional[str]:
     """Use an explicit context, or a demo/test default from the environment."""
     if context:
@@ -197,6 +204,7 @@ def diag(
     all_resources: Annotated[bool, typer.Option("--all", help="Diagnose all resources of this type")] = False,
     max_concurrent: Annotated[int, typer.Option("--max-concurrent", help="Max concurrent diagnoses for --all")] = 5,
     label_selector: Annotated[Optional[str], typer.Option("--selector", "-l", help="Label selector for --all, e.g. app=api,tier=backend")] = None,
+    timeout: Annotated[Optional[float], typer.Option("--timeout", help="Per-kubectl timeout in seconds")] = None,
     interval: Annotated[int, typer.Option("--interval", help="Watch interval in seconds")] = 5,
 ):
     """
@@ -220,6 +228,7 @@ def diag(
       kubectl-smart diag pod --all -n production        # Diagnose all pods
       kubectl-smart diag pod --all -n production --max-concurrent 2
       kubectl-smart diag pod --all -n production -l app=checkout
+      kubectl-smart diag pod failing-pod --timeout 3
     """
     # Validate inputs
     if output not in ('text', 'json'):
@@ -243,6 +252,9 @@ def diag(
     if max_concurrent < 1:
         _echo_command_error("--max-concurrent must be >= 1", output)
         raise typer.Exit(2)
+    if timeout is not None and timeout <= 0:
+        _echo_command_error("--timeout must be greater than 0 seconds", output)
+        raise typer.Exit(2)
 
     try:
         if name is not None:
@@ -251,6 +263,7 @@ def diag(
         context = _resolve_context(context)
         _validate_context(context)
         _validate_label_selector(label_selector)
+        _validate_timeout(timeout)
     except typer.BadParameter as e:
         _echo_command_error(str(e), output)
         raise typer.Exit(2)
@@ -280,7 +293,11 @@ def diag(
         from ..batch import BatchAnalyzer, kubectl_resource_type
         from ..renderers.json_renderer import JsonRenderer
 
-        analyzer = BatchAnalyzer(max_concurrent=max_concurrent)
+        analyzer = BatchAnalyzer(
+            max_concurrent=max_concurrent,
+            kubectl_timeout=timeout,
+            collector_timeout=timeout,
+        )
         kind = kind_map[resource_type]
 
         try:
@@ -389,6 +406,7 @@ def diag(
         watcher = ResourceWatcher(
             subject=subject,
             interval_seconds=float(interval),
+            collector_timeout=timeout,
         )
 
         try:
@@ -401,7 +419,10 @@ def diag(
     from .commands import DiagCommand
 
     # Create and run command
-    command = DiagCommand()
+    from ..models import AnalysisConfig
+
+    config = AnalysisConfig(collector_timeout=timeout) if timeout is not None else None
+    command = DiagCommand(config=config)
 
     try:
         if output == "json":
