@@ -574,9 +574,19 @@ class ScoringEngine:
         """
         if not issues:
             return None
+
+        actionable_issues = [
+            issue
+            for issue in issues
+            if issue.severity in {IssueSeverity.CRITICAL, IssueSeverity.WARNING}
+        ]
+        if not actionable_issues:
+            return None
         
         # Filter to critical issues first
-        critical_issues = [i for i in issues if i.severity == IssueSeverity.CRITICAL]
+        critical_issues = [
+            i for i in actionable_issues if i.severity == IssueSeverity.CRITICAL
+        ]
         
         if critical_issues:
             # Return highest scoring critical issue on critical path
@@ -589,8 +599,8 @@ class ScoringEngine:
             else:
                 return sorted(critical_issues, key=self._issue_sort_key)[0]
         
-        # Fallback to highest scoring issue
-        return sorted(issues, key=self._issue_sort_key)[0] if issues else None
+        # Fallback to highest scoring warning.
+        return sorted(actionable_issues, key=self._issue_sort_key)[0]
     
     def get_contributing_factors(self, issues: List[Issue], root_cause: Optional[Issue] = None) -> List[Issue]:
         """Get contributing factors (top 2 issues excluding root cause)

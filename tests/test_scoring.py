@@ -565,6 +565,49 @@ class TestRootCauseAnalysis:
         result = engine.get_root_cause([warning, critical])
         assert result.severity == IssueSeverity.CRITICAL
 
+    def test_get_root_cause_ignores_info_only_issues(self):
+        """Test info-only issues are not promoted to likely root causes."""
+        engine = ScoringEngine()
+        info = Issue(
+            resource_uid="info",
+            title="Info Issue",
+            description="Info",
+            severity=IssueSeverity.INFO,
+            score=40.0,
+            reason="Info",
+            message="Informational signal",
+        )
+
+        result = engine.get_root_cause([info])
+
+        assert result is None
+
+    def test_get_root_cause_uses_warning_without_critical(self):
+        """Test warning issues can still be likely root causes."""
+        engine = ScoringEngine()
+        warning = Issue(
+            resource_uid="warning",
+            title="Warning Issue",
+            description="Warning",
+            severity=IssueSeverity.WARNING,
+            score=60.0,
+            reason="WarningError",
+            message="Warning error",
+        )
+        info = Issue(
+            resource_uid="info",
+            title="Info Issue",
+            description="Info",
+            severity=IssueSeverity.INFO,
+            score=40.0,
+            reason="Info",
+            message="Informational signal",
+        )
+
+        result = engine.get_root_cause([info, warning])
+
+        assert result == warning
+
     def test_get_root_cause_prefers_critical_path(self):
         """Test get_root_cause prefers critical path issue"""
         engine = ScoringEngine()
