@@ -202,6 +202,9 @@ def diag(
     if output not in ('text', 'json'):
         typer.echo(f"Error: Invalid output format '{output}'. Valid options: text, json", err=True)
         raise typer.Exit(2)
+    if watch and output == "json":
+        _echo_command_error("Watch mode currently supports text output only", output)
+        raise typer.Exit(2)
     if not name and not all_resources:
         _echo_command_error("Either resource name or --all flag must be provided", output)
         raise typer.Exit(2)

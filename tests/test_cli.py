@@ -151,6 +151,18 @@ class TestDiagCommand:
         assert '"exit_code": 2' in result.stdout
         assert "Either resource name or --all flag must be provided" in result.stdout
 
+    def test_diag_watch_json_is_rejected_as_json_error(self):
+        """Test watch mode does not pretend to support JSON streaming."""
+        result = runner.invoke(
+            app,
+            ["diag", "pod", "api", "--watch", "-o", "json"],
+        )
+
+        assert result.exit_code == 2
+        assert '"type": "error"' in result.stdout
+        assert '"exit_code": 2' in result.stdout
+        assert "Watch mode currently supports text output only" in result.stdout
+
     def test_diag_json_invalid_max_concurrent_error_stays_json(self):
         """Test JSON batch option validation errors stay JSON."""
         result = runner.invoke(
