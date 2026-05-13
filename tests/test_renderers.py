@@ -533,6 +533,14 @@ class TestRenderIssue:
 class TestJsonRenderer:
     """Tests for JsonRenderer class."""
 
+    def test_render_error_includes_exit_code(self):
+        """Test JSON errors are automation-friendly."""
+        output = JsonRenderer().render_error("Something went wrong")
+
+        assert '"type": "error"' in output
+        assert '"exit_code": 2' in output
+        assert "Something went wrong" in output
+
     def test_render_diagnosis_includes_issue_evidence(
         self, sample_subject_ctx, sample_resource_record
     ):

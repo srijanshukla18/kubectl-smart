@@ -127,6 +127,38 @@ class TestDiagCommand:
         result = runner.invoke(app, ["diag", "invalid", "test"])
         assert result.exit_code != 0
 
+    @patch("kubectl_smart.cli.commands.DiagCommand.execute_raw")
+    def test_diag_json_error_stays_json(self, mock_execute_raw):
+        """Test JSON diag emits machine-readable errors."""
+        mock_execute_raw.side_effect = ValueError(
+            "Resource Pod/default/missing not found"
+        )
+
+        result = runner.invoke(
+            app,
+            ["diag", "pod", "missing", "-n", "default", "-o", "json"],
+        )
+
+        assert result.exit_code == 2
+        assert '"type": "error"' in result.stdout
+        assert '"exit_code": 2' in result.stdout
+        assert "Resource Pod/default/missing not found" in result.stdout
+
+    @patch("kubectl_smart.batch.BatchAnalyzer.diagnose_all")
+    def test_diag_all_json_unexpected_error_stays_json(self, mock_diagnose_all):
+        """Test JSON batch mode emits machine-readable unexpected errors."""
+        mock_diagnose_all.side_effect = RuntimeError("batch exploded")
+
+        result = runner.invoke(
+            app,
+            ["diag", "pod", "--all", "-n", "default", "-o", "json"],
+        )
+
+        assert result.exit_code == 2
+        assert '"type": "error"' in result.stdout
+        assert '"exit_code": 2' in result.stdout
+        assert "batch exploded" in result.stdout
+
     @patch("kubectl_smart.batch.BatchAnalyzer.diagnose_all")
     def test_diag_all_text_output_includes_data_gaps(self, mock_diagnose_all):
         """Test batch text output surfaces partial-evidence data gaps."""

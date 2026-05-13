@@ -310,7 +310,12 @@ def diag(
         except typer.Exit:
             raise
         except Exception as e:
-            typer.echo(f"Error: {e}", err=True)
+            if output == "json":
+                from ..renderers.json_renderer import JsonRenderer
+
+                typer.echo(JsonRenderer(pretty=True).render_error(str(e)))
+            else:
+                typer.echo(f"Error: {e}", err=True)
             raise typer.Exit(2)
 
     # Single resource mode

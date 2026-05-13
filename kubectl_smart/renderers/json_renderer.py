@@ -176,12 +176,18 @@ class JsonRenderer:
 
         return json.dumps(output, indent=self.indent, default=str)
 
-    def render_error(self, error_msg: str, details: Optional[str] = None) -> str:
+    def render_error(
+        self,
+        error_msg: str,
+        details: Optional[str] = None,
+        exit_code: int = 2,
+    ) -> str:
         """Render error as JSON"""
         output = {
             "type": "error",
             "error": error_msg,
             "details": details,
+            "exit_code": exit_code,
             "timestamp": datetime.utcnow().isoformat(),
         }
 
