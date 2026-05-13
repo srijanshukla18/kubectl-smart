@@ -4,7 +4,10 @@ set -euo pipefail
 NAMESPACE="${NAMESPACE:-kubectl-smart-complex}"
 RBAC_KUBECONFIG="${RBAC_KUBECONFIG:-.kubectl-smart-rbac.kubeconfig}"
 KUBECTL_SMART_CONTEXT="${KUBECTL_SMART_CONTEXT:-$(kubectl config current-context 2>/dev/null || true)}"
+KUBECTL_SMART_CMD_STRING="${KUBECTL_SMART_CMD:-uv run --frozen ./kubectl-smart}"
 SAFE_CONTEXT_PATTERN="${KUBECTL_SMART_SAFE_CONTEXT_PATTERN:-^(kind-|minikube$|colima$)}"
+KUBECTL_SMART_CMD=()
+read -r -a KUBECTL_SMART_CMD <<< "$KUBECTL_SMART_CMD_STRING"
 
 tmpdir=""
 
@@ -71,6 +74,7 @@ assert_contains() {
 }
 
 guard_context
+log "Using kubectl-smart command: $KUBECTL_SMART_CMD_STRING"
 tmpdir="$(mktemp -d)"
 
 log "Checking demo namespace and pods exist..."
@@ -79,21 +83,21 @@ kubectl --context "$KUBECTL_SMART_CONTEXT" get pod fulfillment-worker-0 -n "$NAM
 kubectl --context "$KUBECTL_SMART_CONTEXT" get service inventory-db -n "$NAMESPACE" >/dev/null
 
 log "Checking checkout diagnosis includes evidence-backed root cause..."
-checkout_diag="$(capture checkout_diag kubectl-smart diag pod checkout-api-0 -n "$NAMESPACE")"
+checkout_diag="$(capture checkout_diag "${KUBECTL_SMART_CMD[@]}" diag pod checkout-api-0 -n "$NAMESPACE")"
 assert_status checkout_diag 2
 assert_contains "$checkout_diag" "LIKELY ROOT CAUSE" "checkout root cause section"
 assert_contains "$checkout_diag" "Evidence:" "checkout evidence section"
 assert_contains "$checkout_diag" "Log line:" "checkout log evidence"
 
 log "Checking service diagnosis cites endpoint and selector evidence..."
-service_diag="$(capture service_diag kubectl-smart diag svc inventory-db -n "$NAMESPACE")"
+service_diag="$(capture service_diag "${KUBECTL_SMART_CMD[@]}" diag svc inventory-db -n "$NAMESPACE")"
 assert_status service_diag 2
 assert_contains "$service_diag" "Service has no ready endpoints" "service endpoint root cause"
 assert_contains "$service_diag" "Endpoints/${NAMESPACE}/inventory-db: ready addresses=0" "endpoint count evidence"
 assert_contains "$service_diag" "No Pods in namespace match selector" "selector evidence"
 
 log "Checking admin batch diagnosis reports namespace-scale data gaps..."
-batch_diag="$(capture batch_diag kubectl-smart diag pod --all -n "$NAMESPACE" --max-concurrent 1)"
+batch_diag="$(capture batch_diag "${KUBECTL_SMART_CMD[@]}" diag pod --all -n "$NAMESPACE" --max-concurrent 1)"
 assert_status batch_diag 2
 assert_contains "$batch_diag" "Total: 3 | Analyzed: 3 | Failed: 0" "batch summary"
 assert_contains "$batch_diag" "Data gaps:" "batch data-gap summary"
@@ -117,19 +121,19 @@ assert_status restricted_logs 1
 assert_contains "$restricted_logs" "cannot get resource \"pods/log\"" "restricted log denial"
 
 log "Checking restricted diagnosis surfaces exact RBAC data gaps..."
-restricted_diag="$(capture restricted_diag env KUBECONFIG="$RBAC_KUBECONFIG" kubectl-smart diag pod checkout-api-0 -n "$NAMESPACE")"
+restricted_diag="$(capture restricted_diag env KUBECONFIG="$RBAC_KUBECONFIG" "${KUBECTL_SMART_CMD[@]}" diag pod checkout-api-0 -n "$NAMESPACE")"
 assert_status restricted_diag 1
 assert_contains "$restricted_diag" "DATA GAPS (2)" "restricted diag gap count"
 assert_contains "$restricted_diag" "events events unavailable (rbac)" "restricted event gap"
 assert_contains "$restricted_diag" "logs pods unavailable (rbac)" "restricted log gap"
 
-restricted_fulfillment="$(capture restricted_fulfillment env KUBECONFIG="$RBAC_KUBECONFIG" kubectl-smart diag pod fulfillment-worker-0 -n "$NAMESPACE")"
+restricted_fulfillment="$(capture restricted_fulfillment env KUBECONFIG="$RBAC_KUBECONFIG" "${KUBECTL_SMART_CMD[@]}" diag pod fulfillment-worker-0 -n "$NAMESPACE")"
 assert_status restricted_fulfillment 2
 assert_contains "$restricted_fulfillment" "Verify missing Secret: kubectl get secret missing-fulfillment-runtime-token" "restricted missing Secret action"
 assert_contains "$restricted_fulfillment" "DATA GAPS (2)" "restricted fulfillment gap count"
 
 log "Checking restricted batch JSON preserves per-resource data gaps..."
-restricted_batch_json="$(capture restricted_batch_json env KUBECONFIG="$RBAC_KUBECONFIG" kubectl-smart diag pod --all -n "$NAMESPACE" -o json)"
+restricted_batch_json="$(capture restricted_batch_json env KUBECONFIG="$RBAC_KUBECONFIG" "${KUBECTL_SMART_CMD[@]}" diag pod --all -n "$NAMESPACE" -o json)"
 assert_status restricted_batch_json 2
 assert_contains "$restricted_batch_json" '"data_gaps": 6' "restricted batch total gaps"
 assert_contains "$restricted_batch_json" '"analysis_complete": false' "restricted batch incomplete summary"

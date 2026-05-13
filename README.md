@@ -204,6 +204,8 @@ kubectl-smart --version
 Local demo safety:
 - `kubectl-smart-lab.sh`, `test-setup-minikube.sh`, and `test.sh` refuse to run unless `KUBECTL_SMART_CONTEXT` matches a local context pattern: `kind-*`, `minikube`, or `colima`.
 - The CLI also honors `KUBECTL_SMART_CONTEXT` when `--context` is omitted, which keeps demo commands pinned even if another terminal changes the global kubectl context.
+- `demo-smoke.sh` defaults to the current checkout via `uv run --frozen ./kubectl-smart`.
+  Set `KUBECTL_SMART_CMD=kubectl-smart` when you specifically want to validate an installed binary.
 
 ## 🔬 Current Status (v0.x Beta)
 
