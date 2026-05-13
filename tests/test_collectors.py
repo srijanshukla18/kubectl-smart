@@ -548,6 +548,65 @@ class TestRunKubectl:
 
     @pytest.mark.asyncio
     @patch("asyncio.create_subprocess_exec")
+    async def test_run_kubectl_rejects_flag_resource_before_spawn(self, mock_exec):
+        """Resource positions must not be able to become kubectl flags."""
+        collector = KubectlGet(resource_type="pods")
+        subject = SubjectCtx(kind=ResourceKind.POD, name="", namespace="default")
+
+        with pytest.raises(
+            CollectorError,
+            match="Refusing malformed kubectl resource argument: --filename",
+        ):
+            await collector._run_kubectl(["get", "--filename", "pod.yaml"], subject)
+
+        mock_exec.assert_not_called()
+
+    @pytest.mark.asyncio
+    @patch("asyncio.create_subprocess_exec")
+    async def test_run_kubectl_rejects_unsupported_raw_path_before_spawn(
+        self, mock_exec
+    ):
+        """Raw API access is limited to the kubelet metrics path used by top."""
+        collector = KubectlGet(resource_type="nodes")
+        subject = SubjectCtx(kind=ResourceKind.NODE, name="", namespace=None)
+
+        with pytest.raises(CollectorError, match="Refusing unsupported kubectl raw path"):
+            await collector._run_kubectl(
+                ["get", "--raw", "/api/v1/namespaces/default/secrets"],
+                subject,
+                output_format="",
+            )
+
+        mock_exec.assert_not_called()
+
+    @pytest.mark.asyncio
+    @patch("asyncio.create_subprocess_exec")
+    @patch("subprocess.run")
+    async def test_run_kubectl_allows_kubelet_metrics_raw_path(
+        self, mock_run, mock_exec
+    ):
+        """The guarded raw path still allows the kubelet metrics collector."""
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout="/usr/local/bin/kubectl\n", stderr=""
+        )
+        mock_process = AsyncMock()
+        mock_process.returncode = 0
+        mock_process.communicate.return_value = (b"kubelet_volume_stats_used_bytes 1", b"")
+        mock_exec.return_value = mock_process
+
+        collector = KubectlGet(resource_type="nodes")
+        subject = SubjectCtx(kind=ResourceKind.NODE, name="", namespace=None)
+
+        result = await collector._run_kubectl(
+            ["get", "--raw", "/api/v1/nodes/node-1/proxy/metrics"],
+            subject,
+            output_format="",
+        )
+
+        assert result == {"raw": "kubelet_volume_stats_used_bytes 1"}
+
+    @pytest.mark.asyncio
+    @patch("asyncio.create_subprocess_exec")
     @patch("subprocess.run")
     async def test_run_kubectl_allows_cloud_context_names(self, mock_run, mock_exec):
         """Collector validation should allow real kube context names like EKS ARNs."""

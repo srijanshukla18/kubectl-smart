@@ -20,6 +20,10 @@ from ..models import RawBlob, SubjectCtx
 logger = structlog.get_logger(__name__)
 
 READ_ONLY_KUBECTL_VERBS = frozenset({"get", "describe", "logs", "top"})
+RESOURCE_ARG_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9./-]*$")
+SAFE_RAW_PATH_PATTERN = re.compile(
+    r"^/api/v1/nodes/[A-Za-z0-9][-A-Za-z0-9_.]*/proxy/metrics$"
+)
 TRANSIENT_KUBECTL_ERROR_MARKERS = (
     "timeout",
     "timed out",
@@ -133,6 +137,7 @@ class Collector(ABC):
         if not args or args[0] not in READ_ONLY_KUBECTL_VERBS:
             verb = args[0] if args else "<empty>"
             raise CollectorError(f"Refusing non-read-only kubectl verb: {verb}")
+        self._validate_kubectl_args(args)
 
         # Defensive validation for namespace/context to avoid malformed argv
         dns_label = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
@@ -195,6 +200,33 @@ class Collector(ABC):
         if isinstance(last_error, KubectlError):
             raise last_error
         raise CollectorError("kubectl command failed (retries exhausted)")
+
+    def _validate_kubectl_args(self, args: List[str]) -> None:
+        """Reject malformed argv before spawning kubectl."""
+        for arg in args:
+            if not arg or any(ord(char) < 32 or ord(char) == 127 for char in arg):
+                raise CollectorError("Refusing malformed kubectl argument")
+
+        verb = args[0]
+        if verb == "get" and len(args) >= 2 and args[1] == "--raw":
+            if len(args) != 3 or not SAFE_RAW_PATH_PATTERN.fullmatch(args[2]):
+                raise CollectorError("Refusing unsupported kubectl raw path")
+            return
+
+        resource_index = 1
+        if verb in {"get", "describe", "top"}:
+            if len(args) <= resource_index:
+                raise CollectorError(f"Refusing kubectl {verb} without resource")
+            self._validate_resource_arg(args[resource_index])
+        elif verb == "logs":
+            if len(args) < 2:
+                raise CollectorError("Refusing kubectl logs without pod name")
+            if args[1].startswith("-"):
+                raise CollectorError("Refusing kubectl logs with flag as pod name")
+
+    def _validate_resource_arg(self, resource: str) -> None:
+        if resource.startswith("-") or not RESOURCE_ARG_PATTERN.fullmatch(resource):
+            raise CollectorError(f"Refusing malformed kubectl resource argument: {resource}")
 
     async def _communicate_with_timeout(self, process) -> tuple[bytes, bytes]:
         """Wait for kubectl output and kill the child if it exceeds the timeout."""
