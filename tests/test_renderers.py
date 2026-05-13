@@ -607,6 +607,34 @@ class TestJsonRenderer:
         assert '"exit_code": 2' in output
         assert "Failed to list pods: forbidden" in output
 
+    def test_render_batch_infers_warning_exit_code(
+        self, sample_subject_ctx, sample_resource_record
+    ):
+        """Test JSON batch summary infers warning-only exit code."""
+        issue = Issue(
+            resource_uid=sample_resource_record.uid,
+            title="Resource Status: Unknown",
+            description="Pod test-pod is in Unknown state",
+            severity=IssueSeverity.WARNING,
+            score=70,
+            reason="StatusUnknown",
+            message="Resource is in unhealthy state: Unknown",
+        )
+        result = DiagnosisResult(
+            subject=sample_subject_ctx,
+            resource=sample_resource_record,
+            issues=[issue],
+            analysis_duration=1.0,
+        )
+
+        output = JsonRenderer().render_batch(
+            [result],
+            {"total": 1, "successful": 1, "failed": 0},
+        )
+
+        assert '"warning_count": 1' in output
+        assert '"exit_code": 1' in output
+
     def test_render_diagnosis_uses_warning_exit_code(
         self, sample_subject_ctx, sample_resource_record
     ):

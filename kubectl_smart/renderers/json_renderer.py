@@ -126,19 +126,26 @@ class JsonRenderer:
 
     def render_batch(self, results: List[DiagnosisResult], batch_info: Dict[str, Any]) -> str:
         """Render batch diagnosis results as JSON"""
+        failed = batch_info.get("failed", 0)
+        exit_code = batch_info.get("exit_code")
+        if exit_code is None:
+            if failed or any(r.critical_issues for r in results):
+                exit_code = 2
+            elif any(r.warning_issues for r in results):
+                exit_code = 1
+            else:
+                exit_code = 0
+
         output = {
             "type": "batch_diagnosis",
             "summary": {
                 "total_resources": batch_info.get("total", len(results)),
                 "successful": batch_info.get("successful", len(results)),
-                "failed": batch_info.get("failed", 0),
+                "failed": failed,
                 "duration_seconds": batch_info.get("duration", 0),
                 "data_gaps": sum(len(r.data_gaps) for r in results),
                 "max_concurrent": batch_info.get("max_concurrent"),
-                "exit_code": batch_info.get(
-                    "exit_code",
-                    2 if batch_info.get("failed", 0) else 0,
-                ),
+                "exit_code": exit_code,
             },
             "results": [
                 {

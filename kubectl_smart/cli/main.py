@@ -302,7 +302,7 @@ def diag(
 
                 typer.echo(f"\n⏱️  Completed in {batch_result.duration:.2f}s")
 
-            # Exit code: 2 if issues or batch-level errors were found.
+            # Exit code: 1 for warnings, 2 for critical issues or batch-level errors.
             raise typer.Exit(batch_exit_code)
 
         except typer.Exit:
