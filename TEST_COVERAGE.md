@@ -57,6 +57,8 @@ coverage command above when working on test depth.
 - Batch resource listing validates namespace and context before spawning kubectl
 - Batch `--selector`/`-l` narrows resource listing before diagnosis
 - Batch text and JSON summaries preserve label selector scope
+- Batch text rows with data gaps are labeled as incomplete analysis instead of
+  healthy/clean
 - Explicit `--timeout` flows through single-resource diagnosis, graph, top,
   watch mode, batch resource listing, and batch per-resource collectors
 - Top-level predictive outlook fails closed when the target namespace is missing

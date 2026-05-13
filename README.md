@@ -57,6 +57,8 @@ Output and modes:
 - `--max-concurrent` controls batch diagnosis concurrency so you can reduce API pressure in degraded clusters.
 - `--selector`/`-l` limits `--all` to matching labels, which is useful for
   narrowing a large namespace during incident triage.
+- In batch text output, rows with data gaps are labeled `incomplete analysis`
+  instead of healthy/clean, even if no warning or critical issue was surfaced.
 - `--timeout` sets the per-kubectl collector timeout, including the initial
   batch list call and each per-resource diagnosis in `--all` mode.
 - `--context` pins the kubectl context. For repeatable local demos/tests, you can also set `KUBECTL_SMART_CONTEXT=kind-kubectl-smart-demo`.

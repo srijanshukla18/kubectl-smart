@@ -350,7 +350,7 @@ def diag(
                     elif result.warning_issues:
                         issues_str = f"🟡 {len(result.warning_issues)} warning"
                     elif result.data_gaps:
-                        issues_str = "⚪ no issues found"
+                        issues_str = "⚪ incomplete analysis"
                     else:
                         issues_str = "✅ healthy"
 
