@@ -122,6 +122,21 @@ class TestDiagCommand:
         assert result.exit_code == 0
         assert mock_execute.await_count == 1
 
+    @patch("kubectl_smart.cli.commands.DiagCommand.execute")
+    def test_diag_allows_production_style_context_names(self, mock_execute):
+        """Test common cloud kube context names are not rejected."""
+        from kubectl_smart.cli.commands import CommandResult
+
+        mock_execute.return_value = CommandResult(output="Output", exit_code=0)
+        context = "arn:aws:eks:us-east-1:123456789012:cluster/prod"
+        result = runner.invoke(
+            app,
+            ["diag", "pod", "api", "--context", context],
+        )
+
+        assert result.exit_code == 0
+        assert mock_execute.await_count == 1
+
     def test_diag_invalid_resource_type(self):
         """Test diag with invalid resource type"""
         result = runner.invoke(app, ["diag", "invalid", "test"])
@@ -159,6 +174,18 @@ class TestDiagCommand:
         assert '"type": "error"' in result.stdout
         assert '"exit_code": 2' in result.stdout
         assert "Namespace must match DNS-1123" in result.stdout
+
+    def test_diag_json_invalid_context_error_stays_json(self):
+        """Test invalid context names are rejected without breaking JSON."""
+        result = runner.invoke(
+            app,
+            ["diag", "pod", "api", "--context", "bad\nctx", "-o", "json"],
+        )
+
+        assert result.exit_code == 2
+        assert '"type": "error"' in result.stdout
+        assert '"exit_code": 2' in result.stdout
+        assert "Context must not contain control characters" in result.stdout
 
     def test_diag_json_invalid_resource_name_error_stays_json(self):
         """Test invalid dotted resource names are rejected before kubectl."""

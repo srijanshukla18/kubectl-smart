@@ -79,7 +79,6 @@ class ResourceType(str, Enum):
 
 NAME_PATTERN = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
 RESOURCE_NAME_PATTERN = re.compile(r"^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$")
-CONTEXT_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 
 def _validate_namespace(namespace: Optional[str]) -> None:
@@ -105,8 +104,8 @@ def _validate_resource_name(name: str) -> None:
 def _validate_context(context: Optional[str]) -> None:
     if context is None:
         return
-    if not CONTEXT_PATTERN.fullmatch(context):
-        raise typer.BadParameter("Context may only contain letters, numbers, underscore, dot, or dash.")
+    if any(ord(char) < 32 or ord(char) == 127 for char in context):
+        raise typer.BadParameter("Context must not contain control characters.")
 
 
 def _resolve_context(context: Optional[str]) -> Optional[str]:
