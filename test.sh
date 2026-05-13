@@ -21,6 +21,7 @@ KUBECTL_SMART_CONTEXT="${KUBECTL_SMART_CONTEXT:-kind-kubectl-smart-demo}"
 KUBECTL_SMART_KUBECONFIG="${KUBECTL_SMART_KUBECONFIG:-$PWD/.kubectl-smart-demo.kubeconfig}"
 SAFE_CONTEXT_PATTERN="${KUBECTL_SMART_SAFE_CONTEXT_PATTERN:-^(kind-|minikube$|colima$)}"
 REAL_KUBECTL="$(command -v kubectl || true)"
+TIMEOUT_BIN="$(command -v timeout || command -v gtimeout || true)"
 
 log_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
@@ -52,6 +53,14 @@ run_test() {
     # Run command safely using an array to avoid eval injection
     local -a cmd_array
     IFS=' ' read -r -a cmd_array <<< "$command"
+    if [ "${cmd_array[0]:-}" = "timeout" ]; then
+        if [ -n "$TIMEOUT_BIN" ]; then
+            cmd_array[0]="$TIMEOUT_BIN"
+        else
+            log_warning "timeout/gtimeout not found; running without timeout"
+            cmd_array=("${cmd_array[@]:2}")
+        fi
+    fi
     "${cmd_array[@]}"
     local exit_code=$?
 
@@ -88,6 +97,14 @@ run_test_with_output() {
     local output exit_code
     local -a cmd_array
     IFS=' ' read -r -a cmd_array <<< "$command"
+    if [ "${cmd_array[0]:-}" = "timeout" ]; then
+        if [ -n "$TIMEOUT_BIN" ]; then
+            cmd_array[0]="$TIMEOUT_BIN"
+        else
+            log_warning "timeout/gtimeout not found; running without timeout"
+            cmd_array=("${cmd_array[@]:2}")
+        fi
+    fi
     output=$("${cmd_array[@]}" 2>&1)
     exit_code=$?
 
@@ -112,6 +129,10 @@ log_info "Checking prerequisites..."
 if [ -z "$REAL_KUBECTL" ]; then
     log_error "kubectl not found. Please install kubectl."
     exit 1
+fi
+
+if [ -z "$TIMEOUT_BIN" ]; then
+    log_warning "timeout/gtimeout not found; timeout-prefixed tests will run without a time limit."
 fi
 
 if ! [[ "$KUBECTL_SMART_CONTEXT" =~ $SAFE_CONTEXT_PATTERN ]]; then
