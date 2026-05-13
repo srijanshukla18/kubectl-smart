@@ -176,6 +176,10 @@ export KUBECTL_SMART_CONTEXT=kind-kubectl-smart-demo
 ./kubectl-smart-lab.sh apply all
 ./test.sh
 
+# Optional: verify the complex local demo and RBAC data-gap behavior
+./demo-complex-scenarios.sh apply
+./demo-smoke.sh
+
 # Test individual commands
 kubectl-smart --help
 kubectl-smart diag --help

@@ -8,6 +8,7 @@ These scenarios live in `kubectl-smart-complex` and do not modify the existing
 ```bash
 ./demo-complex-scenarios.sh apply
 kubectl get pods -n kubectl-smart-complex
+./demo-smoke.sh
 ```
 
 The setup also writes `.kubectl-smart-rbac.kubeconfig`, a restricted kubeconfig
