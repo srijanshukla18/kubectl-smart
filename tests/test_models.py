@@ -1,7 +1,7 @@
 """Tests for kubectl_smart/models.py"""
 
 import os
-from datetime import datetime, timezone
+from datetime import datetime
 from unittest.mock import patch
 
 import pytest

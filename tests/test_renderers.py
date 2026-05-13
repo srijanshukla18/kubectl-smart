@@ -1,8 +1,6 @@
 """Tests for kubectl_smart/renderers/terminal.py"""
 
-from datetime import datetime, timezone
 
-import pytest
 
 from kubectl_smart.models import (
     DiagnosisResult,
@@ -11,7 +9,6 @@ from kubectl_smart.models import (
     IssueSeverity,
     ResourceKind,
     ResourceRecord,
-    SubjectCtx,
     TopResult,
 )
 from kubectl_smart.renderers.terminal import TerminalRenderer

@@ -7,7 +7,6 @@ following the technical specification exactly.
 
 from __future__ import annotations
 
-import json
 from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union

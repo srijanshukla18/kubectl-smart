@@ -1,11 +1,10 @@
 """Tests for kubectl_smart/parsers/base.py"""
 
 import json
-from datetime import datetime
 
 import pytest
 
-from kubectl_smart.models import RawBlob, ResourceKind, ResourceRecord
+from kubectl_smart.models import RawBlob, ResourceKind
 from kubectl_smart.parsers.base import (
     EventParser,
     KubernetesResourceParser,

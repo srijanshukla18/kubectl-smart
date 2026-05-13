@@ -251,7 +251,6 @@ class ResourceWatcher:
         for change in changes:
             timestamp = change.timestamp.strftime('%H:%M:%S')
             icon = self._get_event_icon(change.event_type)
-            color = self._get_event_color(change.event_type)
 
             if change.event_type == "status_change":
                 print(f"\n{icon} [{timestamp}] Status: {change.details['previous']} → {change.details['current']}")

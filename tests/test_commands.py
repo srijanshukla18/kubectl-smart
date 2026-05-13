@@ -1,12 +1,10 @@
 """Tests for kubectl_smart/cli/commands.py"""
 
-import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from kubectl_smart.cli.commands import (
-    BaseCommand,
     CommandResult,
     DiagCommand,
     GraphCommand,

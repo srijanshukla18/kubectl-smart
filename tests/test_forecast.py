@@ -1,12 +1,8 @@
 """Tests for kubectl_smart/forecast/predictor.py"""
 
-import json
-import os
-import tempfile
 from datetime import datetime, timedelta, timezone
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
-import pytest
 
 from kubectl_smart.forecast.predictor import ForecastingEngine
 from kubectl_smart.models import ResourceKind, ResourceRecord

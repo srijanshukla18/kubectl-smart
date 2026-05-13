@@ -1,8 +1,6 @@
 """Tests for kubectl_smart/collectors/base.py"""
 
 import asyncio
-import json
-from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest

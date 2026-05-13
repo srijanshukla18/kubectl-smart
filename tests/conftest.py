@@ -1,23 +1,18 @@
 """Pytest configuration and fixtures for kubectl-smart tests"""
 
-import json
-from datetime import datetime, timezone
-from typing import Any, Dict, List
-from unittest.mock import AsyncMock, MagicMock, patch
+from typing import Any, Dict
+from unittest.mock import MagicMock
 
 import pytest
 
 from kubectl_smart.models import (
     AnalysisConfig,
-    DiagnosisResult,
-    GraphResult,
     Issue,
     IssueSeverity,
     RawBlob,
     ResourceKind,
     ResourceRecord,
     SubjectCtx,
-    TopResult,
 )
 
 

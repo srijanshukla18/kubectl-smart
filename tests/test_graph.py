@@ -1,6 +1,5 @@
 """Tests for kubectl_smart/graph/builder.py"""
 
-import pytest
 
 from kubectl_smart.graph.builder import GraphBuilder
 from kubectl_smart.models import ResourceKind, ResourceRecord

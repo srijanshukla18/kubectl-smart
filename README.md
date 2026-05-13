@@ -172,6 +172,9 @@ uv run --extra dev pytest
 # Match the CI warning-as-error gate
 uv run --frozen --extra dev pytest -W error::RuntimeWarning -W error::DeprecationWarning
 
+# Match the CI high-signal lint gate
+uv run --frozen --extra dev ruff check kubectl_smart tests --select F,B,C4 --ignore B904
+
 # Optional: run coverage
 uv run --extra dev pytest --cov=kubectl_smart --cov-report=term-missing
 

@@ -6,7 +6,7 @@ expiry prediction as specified in the technical requirements.
 """
 
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
 import structlog
@@ -140,7 +140,7 @@ class ForecastingEngine:
                         'predicted_utilization': capacity_prediction['predicted_value'],
                         'forecast_hours': self.forecast_horizon_hours,
                         'message': f"CPU utilization predicted to reach {capacity_prediction['predicted_value']:.1f}%",
-                        'suggested_action': f"Consider scaling workloads or adding nodes"
+                        'suggested_action': "Consider scaling workloads or adding nodes"
                     })
         
         return predictions
@@ -165,11 +165,6 @@ class ForecastingEngine:
         if storage_bytes == 0:
             return predictions
         
-        # Check current usage if available in status
-        status = pvc.get_property('status', {})
-        capacity = status.get('capacity', {})
-        used_storage = capacity.get('storage', storage)  # Fallback to requested
-        
         # Use kubelet metrics parsed for PVC utilization if available
         metrics = pvc.get_property('metrics', {})
         used_bytes = float(metrics.get('pvc_used_bytes', 0))
@@ -190,7 +185,7 @@ class ForecastingEngine:
                     'predicted_utilization': utilization,
                     'forecast_hours': 0,
                     'message': f"PVC {pvc.name} is at {utilization:.1f}%",
-                    'suggested_action': f"Expand PVC or free space"
+                    'suggested_action': "Expand PVC or free space"
                 })
             else:
                 # Try to forecast from cached history

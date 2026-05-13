@@ -309,7 +309,6 @@ class GraphBuilder:
     def _extract_pvc_relationships(self, pvc: ResourceRecord) -> List[Tuple[str, str]]:
         """Extract PVC relationships to PV"""
         relationships = []
-        spec = pvc.get_property('spec', {})
         status = pvc.get_property('status', {})
         
         # Check if bound to a PV

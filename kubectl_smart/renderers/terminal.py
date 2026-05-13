@@ -7,20 +7,16 @@ producing the exact output format described in the product specification.
 
 
 
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 from rich.console import Console
-from rich.panel import Panel
 from rich.table import Table
-from rich.text import Text
-from rich.tree import Tree
 
 from ..models import (
     DiagnosisResult,
     GraphResult,
     Issue,
     IssueSeverity,
-    ResourceRecord,
     TopResult,
 )
 
@@ -69,7 +65,7 @@ class TerminalRenderer:
             
             # Root Cause - highest-score issue
             if result.root_cause:
-                console.print(f"\n🔴 LIKELY ROOT CAUSE")
+                console.print("\n🔴 LIKELY ROOT CAUSE")
                 self._render_issue(console, result.root_cause, show_details=True)
             
             # Contributing Factors - next 2 issues (if ≥ 50)
@@ -81,7 +77,7 @@ class TerminalRenderer:
 
             # Recent Events - New Section
             if result.recent_events:
-                console.print(f"\n📅 RECENT EVENTS")
+                console.print("\n📅 RECENT EVENTS")
                 table = Table(show_header=True, header_style="bold magenta", box=None)
                 table.add_column("Time", style="cyan")
                 table.add_column("Type", style="white")
@@ -105,7 +101,7 @@ class TerminalRenderer:
             
             # Suggested Actions
             if result.suggested_actions:
-                console.print(f"\n💡 SUGGESTED ACTIONS")
+                console.print("\n💡 SUGGESTED ACTIONS")
                 for i, action in enumerate(result.suggested_actions, 1):
                     console.print(f"  {i}. {action}")
 
@@ -130,7 +126,7 @@ class TerminalRenderer:
                     console.print(line)
             
             # Summary statistics
-            console.print(f"\n📊 GRAPH STATISTICS")
+            console.print("\n📊 GRAPH STATISTICS")
             console.print(f"  Resources: {len(result.nodes)}")
             console.print(f"  Dependencies: {len(result.edges)}")
             console.print(f"  Upstream: {result.upstream_count}")

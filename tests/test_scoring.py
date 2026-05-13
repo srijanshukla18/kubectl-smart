@@ -1,9 +1,7 @@
 """Tests for kubectl_smart/scoring/engine.py"""
 
 from datetime import datetime, timezone, timedelta
-from unittest.mock import patch
 
-import pytest
 
 from kubectl_smart.graph.builder import GraphBuilder
 from kubectl_smart.models import Issue, IssueSeverity, ResourceKind, ResourceRecord

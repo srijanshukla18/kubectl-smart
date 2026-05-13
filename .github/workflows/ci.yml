@@ -7,6 +7,28 @@ on:
     branches: [main]
 
 jobs:
+  lint:
+    name: High-signal Ruff lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+
+      - name: Run high-signal lint
+        run: >
+          uv run --frozen --extra dev ruff check kubectl_smart tests
+          --select F,B,C4
+          --ignore B904
+
   tests:
     name: Tests / Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest

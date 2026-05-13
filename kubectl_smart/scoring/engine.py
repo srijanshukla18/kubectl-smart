@@ -5,7 +5,6 @@ This module implements the heuristic scoring system as specified in the technica
 requirements, with configurable weights and deterministic output.
 """
 
-import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -277,7 +276,7 @@ class ScoringEngine:
         
         # Keyword scoring from message
         message_lower = issue.message.lower()
-        for category, config in self.keywords.items():
+        for _category, config in self.keywords.items():
             for pattern in config['patterns']:
                 if pattern in message_lower:
                     score += config['score']
