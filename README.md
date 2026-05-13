@@ -64,7 +64,12 @@ Output and modes:
 
 JSON automation contract:
 - `exit_code` mirrors the process exit status for single-resource and batch diagnosis.
-- `analysis_complete: false` and `data_gap_count > 0` mean one or more collectors were unavailable; inspect `data_gaps` before treating a clean result as complete.
+- `analysis_complete: false` means the result should not be treated as fully
+  observed. For diagnosis JSON this includes unavailable collectors
+  (`data_gap_count > 0`) and missing target resources. Batch JSON exposes this
+  both in `summary.analysis_complete` and on each item in `results`.
+- Inspect `data_gaps` before treating a clean result as complete; an empty
+  `data_gaps` list only means no collector gap was recorded.
 - `diagnostic_issues` is the deduplicated set that backs `issue_summary`, root-cause severity, and exit-code decisions. `issues` remains the raw scored issue list.
 
 ### 2. `graph` - Dependency Visualization
