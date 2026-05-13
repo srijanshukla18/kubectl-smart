@@ -206,6 +206,9 @@ Local demo safety:
 - The CLI also honors `KUBECTL_SMART_CONTEXT` when `--context` is omitted, which keeps demo commands pinned even if another terminal changes the global kubectl context.
 - `demo-smoke.sh` defaults to the current checkout via `uv run --frozen ./kubectl-smart`.
   Set `KUBECTL_SMART_CMD=kubectl-smart` when you specifically want to validate an installed binary.
+- `demo-smoke.sh` passes explicit contexts for both the admin demo context and
+  the restricted RBAC kubeconfig, so an exported shell context cannot bleed
+  across the two checks.
 
 ## 🔬 Current Status (v0.x Beta)
 
