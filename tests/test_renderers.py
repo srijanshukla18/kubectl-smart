@@ -2,7 +2,6 @@
 
 import json
 
-
 from kubectl_smart.models import (
     DiagnosisResult,
     GraphResult,
@@ -12,8 +11,8 @@ from kubectl_smart.models import (
     ResourceRecord,
     TopResult,
 )
-from kubectl_smart.renderers.terminal import TerminalRenderer
 from kubectl_smart.renderers.json_renderer import JsonRenderer
+from kubectl_smart.renderers.terminal import TerminalRenderer
 
 
 class TestTerminalRenderer:
@@ -766,10 +765,10 @@ class TestJsonRenderer:
         assert '"data_gap_count": 1' in output
         assert '"analysis_complete": false' in output
 
-    def test_render_batch_includes_data_gaps(
+    def test_render_batch_includes_per_resource_data_gap_summary(
         self, sample_subject_ctx, sample_resource_record
     ):
-        """Test JSON batch output preserves per-resource data gaps."""
+        """Test JSON batch output preserves per-resource completeness."""
         result = DiagnosisResult(
             subject=sample_subject_ctx,
             resource=sample_resource_record,
@@ -777,12 +776,17 @@ class TestJsonRenderer:
             suggested_actions=["kubectl auth can-i list events -n default"],
             analysis_duration=1.0,
         )
+        complete_result = DiagnosisResult(
+            subject=sample_subject_ctx,
+            resource=sample_resource_record,
+            analysis_duration=1.0,
+        )
 
         output = JsonRenderer().render_batch(
-            [result],
+            [result, complete_result],
             {
-                "total": 1,
-                "successful": 1,
+                "total": 2,
+                "successful": 2,
                 "failed": 0,
                 "duration": 1.0,
                 "max_concurrent": 2,
@@ -795,6 +799,11 @@ class TestJsonRenderer:
         assert '"data_gap_count": 1' in output
         assert "events events unavailable" in output
         assert "kubectl auth can-i list events" in output
+        parsed = json.loads(output)
+        assert parsed["results"][0]["data_gap_count"] == 1
+        assert parsed["results"][0]["analysis_complete"] is False
+        assert parsed["results"][1]["data_gap_count"] == 0
+        assert parsed["results"][1]["analysis_complete"] is True
 
     def test_render_batch_summary_includes_exit_code(self):
         """Test JSON batch summary exposes the aggregate exit code."""

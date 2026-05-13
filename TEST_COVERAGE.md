@@ -35,8 +35,9 @@ coverage command above when working on test depth.
 - Certificate forecasts avoid Ingress TLS reference false positives when Secret
   inventory is incomplete or the referenced Secret exists
 - Terminal rendering, including root-cause and contributing-factor evidence
-- JSON rendering contracts, including surfaced diagnostic issues, data gaps, and
-  issue metadata/evidence completeness for automation, plus batch summaries
+- JSON rendering contracts, including surfaced diagnostic issues, data gaps,
+  per-resource batch completeness, and issue metadata/evidence completeness for
+  automation, plus batch summaries
 - JSON error responses preserve data gaps and mark analysis incomplete for
   automation
 - CLI option parsing and backwards-compatible aliases

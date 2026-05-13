@@ -11,7 +11,7 @@ Usage:
 
 import json
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from ..models import (
     DiagnosisResult,
@@ -133,7 +133,7 @@ class JsonRenderer:
 
         return json.dumps(output, indent=self.indent, default=str)
 
-    def render_batch(self, results: List[DiagnosisResult], batch_info: Dict[str, Any]) -> str:
+    def render_batch(self, results: list[DiagnosisResult], batch_info: dict[str, Any]) -> str:
         """Render batch diagnosis results as JSON"""
         failed = batch_info.get("failed", 0)
         exit_code = batch_info.get("exit_code")
@@ -181,6 +181,7 @@ class JsonRenderer:
                     "suggested_actions": r.suggested_actions,
                     "data_gaps": r.data_gaps,
                     "data_gap_count": len(r.data_gaps),
+                    "analysis_complete": not r.data_gaps,
                     "exit_code": r.exit_code,
                 }
                 for r in results
@@ -197,7 +198,7 @@ class JsonRenderer:
         error_msg: str,
         details: Optional[str] = None,
         exit_code: int = 2,
-        data_gaps: Optional[List[str]] = None,
+        data_gaps: Optional[list[str]] = None,
     ) -> str:
         """Render error as JSON"""
         gaps = data_gaps or []
@@ -214,7 +215,7 @@ class JsonRenderer:
 
         return json.dumps(output, indent=self.indent, default=str)
 
-    def _serialize_resource(self, resource: ResourceRecord) -> Dict[str, Any]:
+    def _serialize_resource(self, resource: ResourceRecord) -> dict[str, Any]:
         """Serialize ResourceRecord to dict"""
         return {
             "kind": resource.kind.value,
@@ -227,7 +228,7 @@ class JsonRenderer:
             "annotations": {k: v for k, v in resource.annotations.items() if not k.startswith("kubectl.kubernetes.io")},
         }
 
-    def _serialize_issue(self, issue: Issue) -> Dict[str, Any]:
+    def _serialize_issue(self, issue: Issue) -> dict[str, Any]:
         """Serialize Issue to dict"""
         return {
             "title": issue.title,
@@ -245,7 +246,7 @@ class JsonRenderer:
             "metadata": issue.metadata,
         }
 
-    def _serialize_event(self, event: ResourceRecord) -> Dict[str, Any]:
+    def _serialize_event(self, event: ResourceRecord) -> dict[str, Any]:
         """Serialize event ResourceRecord to dict"""
         return {
             "type": event.properties.get("type", "Normal"),
