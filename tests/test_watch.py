@@ -39,7 +39,10 @@ def test_watch_status_from_unknown_exit_code():
 
 
 @pytest.mark.asyncio
-async def test_check_resource_uses_raw_diagnosis_for_change_detection(monkeypatch):
+async def test_check_resource_uses_raw_diagnosis_for_change_detection(
+    monkeypatch,
+    capsys,
+):
     """Watch mode should compare diagnosis details, not only exit-code labels."""
     subject = SubjectCtx(kind=ResourceKind.POD, name="api", namespace="default")
     resource = ResourceRecord(
@@ -108,9 +111,11 @@ async def test_check_resource_uses_raw_diagnosis_for_change_detection(monkeypatc
     )
 
     await watcher._check_resource(FakeRenderer(), "text")
+    initial_output = capsys.readouterr().out
     await watcher._check_resource(FakeRenderer(), "text")
 
     assert calls == {"execute": 0, "execute_raw": 2}
+    assert "rendered CrashLoopBackOff" in initial_output
     assert watcher.previous_state is not None
     assert watcher.previous_state.root_cause_title == "Log Errors"
     assert any(change.event_type == "root_cause_change" for change in changes)

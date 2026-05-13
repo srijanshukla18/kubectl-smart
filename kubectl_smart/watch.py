@@ -79,10 +79,10 @@ class ResourceWatcher:
         self.running = True
         logger.info("Started watching resource", resource=self.subject.full_name)
 
-        print(f"\n👁️  WATCH MODE: Monitoring {self.subject.full_name}")
-        print(f"Polling interval: {self.interval_seconds}s")
-        print("Press Ctrl+C to stop\n")
-        print("=" * 60)
+        print(f"\n👁️  WATCH MODE: Monitoring {self.subject.full_name}", flush=True)
+        print(f"Polling interval: {self.interval_seconds}s", flush=True)
+        print("Press Ctrl+C to stop\n", flush=True)
+        print("=" * 60, flush=True)
 
         try:
             while self.running:
@@ -90,12 +90,12 @@ class ResourceWatcher:
                 self.iteration_count += 1
                 await asyncio.sleep(self.interval_seconds)
         except KeyboardInterrupt:
-            print("\n\n⏹️  Watch stopped by user")
+            print("\n\n⏹️  Watch stopped by user", flush=True)
             self._print_summary()
             self.stop()
         except Exception as e:
             logger.error("Watch failed", error=str(e))
-            print(f"\n❌ Watch error: {e}")
+            print(f"\n❌ Watch error: {e}", flush=True)
             self.stop()
 
     def stop(self) -> None:
@@ -128,7 +128,7 @@ class ResourceWatcher:
 
         except Exception as e:
             logger.warning(f"Check failed: {e}")
-            print(f"\n⚠️  [{datetime.now().strftime('%H:%M:%S')}] Check failed: {e}")
+            print(f"\n⚠️  [{datetime.now().strftime('%H:%M:%S')}] Check failed: {e}", flush=True)
 
     def _extract_state(self, result) -> WatchState:
         """Extract comparable state from diagnosis result"""
@@ -253,13 +253,13 @@ class ResourceWatcher:
     def _print_initial_state(self, result, renderer, output_format: str) -> None:
         """Print initial diagnosis state"""
         timestamp = datetime.now().strftime('%H:%M:%S')
-        print(f"\n[{timestamp}] Initial diagnosis:")
+        print(f"\n[{timestamp}] Initial diagnosis:", flush=True)
 
         if hasattr(result, 'output'):
             # CommandResult
-            print(result.output)
+            print(result.output, flush=True)
         elif renderer:
-            print(renderer.render_diagnosis(result))
+            print(renderer.render_diagnosis(result), flush=True)
 
     def _print_changes(self, changes: List[WatchEvent]) -> None:
         """Print detected changes"""
