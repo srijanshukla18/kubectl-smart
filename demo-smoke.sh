@@ -242,6 +242,12 @@ assert_status restricted_fulfillment 2
 assert_contains "$restricted_fulfillment" "Verify missing Secret: kubectl get secret missing-fulfillment-runtime-token" "restricted missing Secret action"
 assert_contains "$restricted_fulfillment" "DATA GAPS (2)" "restricted fulfillment gap count"
 
+log "Checking restricted batch text marks incomplete clean rows..."
+restricted_batch_text="$(capture restricted_batch_text env KUBECONFIG="$RBAC_KUBECONFIG" "${KUBECTL_SMART_CMD[@]}" diag pod --all -n "$NAMESPACE" --context "$RBAC_CONTEXT")"
+assert_status restricted_batch_text 2
+assert_contains "$restricted_batch_text" "Data gaps: 6" "restricted batch text total gaps"
+assert_contains "$restricted_batch_text" "Running | ⚪ incomplete analysis | data gaps: 2" "restricted batch incomplete row"
+
 log "Checking fulfillment graph preserves the missing env Secret dependency..."
 fulfillment_graph="$(capture fulfillment_graph "${KUBECTL_SMART_CMD[@]}" graph pod fulfillment-worker-0 -n "$NAMESPACE" --context "$KUBECTL_SMART_CONTEXT" --upstream --downstream --timeout 2)"
 assert_status fulfillment_graph 0
