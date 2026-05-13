@@ -19,6 +19,8 @@ from ..models import RawBlob, SubjectCtx
 
 logger = structlog.get_logger(__name__)
 
+READ_ONLY_KUBECTL_VERBS = frozenset({"get", "describe", "logs", "top"})
+
 
 class CollectorError(Exception):
     """Base exception for collector errors"""
@@ -112,6 +114,10 @@ class Collector(ABC):
             KubectlError: When kubectl command fails
             RBACError: When RBAC permissions are insufficient
         """
+        if not args or args[0] not in READ_ONLY_KUBECTL_VERBS:
+            verb = args[0] if args else "<empty>"
+            raise CollectorError(f"Refusing non-read-only kubectl verb: {verb}")
+
         # Defensive validation for namespace/context to avoid malformed argv
         dns_label = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
         context_re = re.compile(r"^[A-Za-z0-9_.-]+$")

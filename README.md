@@ -6,7 +6,9 @@
 
 > ⚠️ **Early feedback welcome** - This project is in active development. Please report issues and share your experience.
 
-**Read-only operations only** - Safe to run in production, never modifies your cluster.
+**Read-only operations only** - Safe to run in production, never modifies your
+cluster. The shared kubectl runner rejects non-read-only verbs before spawning
+`kubectl`.
 
 ## 🚀 Quick Start
 

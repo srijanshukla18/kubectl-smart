@@ -462,6 +462,21 @@ class TestRunKubectl:
 
     @pytest.mark.asyncio
     @patch("asyncio.create_subprocess_exec")
+    async def test_run_kubectl_rejects_mutating_verbs_before_spawn(self, mock_exec):
+        """The shared kubectl runner should enforce the read-only guarantee."""
+        collector = KubectlGet(resource_type="pod")
+        subject = SubjectCtx(kind=ResourceKind.POD, name="test-pod", namespace="default")
+
+        with pytest.raises(
+            CollectorError,
+            match="Refusing non-read-only kubectl verb: delete",
+        ):
+            await collector._run_kubectl(["delete", "pod", "test-pod"], subject)
+
+        mock_exec.assert_not_called()
+
+    @pytest.mark.asyncio
+    @patch("asyncio.create_subprocess_exec")
     @patch("subprocess.run")
     async def test_run_kubectl_rbac_error(self, mock_run, mock_exec):
         """Test _run_kubectl raises RBACError on permission denied"""
