@@ -739,6 +739,22 @@ class TestJsonRenderer:
         assert '"data_gap_count": 1' in output
         assert '"analysis_complete": false' in output
 
+    def test_render_diagnosis_marks_missing_resource_incomplete(self, sample_subject_ctx):
+        """Test JSON diagnosis completeness is false without target resource data."""
+        result = DiagnosisResult(
+            subject=sample_subject_ctx,
+            resource=None,
+            analysis_duration=1.0,
+        )
+
+        output = JsonRenderer().render_diagnosis(result)
+
+        parsed = json.loads(output)
+        assert parsed["resource"] is None
+        assert parsed["data_gap_count"] == 0
+        assert parsed["analysis_complete"] is False
+        assert parsed["exit_code"] == 2
+
     def test_render_graph_includes_data_gap_summary(self, sample_subject_ctx):
         """Test JSON graph exposes machine-readable completeness."""
         result = GraphResult(
@@ -903,7 +919,9 @@ class TestJsonRenderer:
 
         parsed = json.loads(output)
         assert parsed["summary"]["exit_code"] == 2
+        assert parsed["summary"]["analysis_complete"] is False
         assert parsed["results"][0]["status"] is None
+        assert parsed["results"][0]["analysis_complete"] is False
         assert parsed["results"][0]["exit_code"] == 2
 
     def test_render_diagnosis_uses_warning_exit_code(

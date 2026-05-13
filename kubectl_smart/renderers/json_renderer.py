@@ -72,7 +72,7 @@ class JsonRenderer:
             ],
             "data_gaps": result.data_gaps,
             "data_gap_count": len(result.data_gaps),
-            "analysis_complete": not result.data_gaps,
+            "analysis_complete": self._diagnosis_analysis_complete(result),
             "analysis_duration_seconds": result.analysis_duration,
             "timestamp": result.timestamp.isoformat(),
             "exit_code": result.exit_code,
@@ -147,6 +147,9 @@ class JsonRenderer:
         critical_count = sum(len(r.critical_issues) for r in results)
         warning_count = sum(len(r.warning_issues) for r in results)
         data_gap_count = sum(len(r.data_gaps) for r in results)
+        analysis_complete = not failed and all(
+            self._diagnosis_analysis_complete(result) for result in results
+        )
 
         output = {
             "type": "batch_diagnosis",
@@ -158,7 +161,7 @@ class JsonRenderer:
                 "warning": warning_count,
                 "duration_seconds": batch_info.get("duration", 0),
                 "data_gaps": data_gap_count,
-                "analysis_complete": not failed and data_gap_count == 0,
+                "analysis_complete": analysis_complete,
                 "max_concurrent": batch_info.get("max_concurrent"),
                 "label_selector": batch_info.get("label_selector"),
                 "exit_code": exit_code,
@@ -181,7 +184,7 @@ class JsonRenderer:
                     "suggested_actions": r.suggested_actions,
                     "data_gaps": r.data_gaps,
                     "data_gap_count": len(r.data_gaps),
-                    "analysis_complete": not r.data_gaps,
+                    "analysis_complete": self._diagnosis_analysis_complete(r),
                     "exit_code": r.exit_code,
                 }
                 for r in results
@@ -214,6 +217,10 @@ class JsonRenderer:
         }
 
         return json.dumps(output, indent=self.indent, default=str)
+
+    def _diagnosis_analysis_complete(self, result: DiagnosisResult) -> bool:
+        """Return whether diagnosis JSON has complete target evidence."""
+        return result.resource is not None and not result.data_gaps
 
     def _serialize_resource(self, resource: ResourceRecord) -> dict[str, Any]:
         """Serialize ResourceRecord to dict"""
