@@ -20,7 +20,7 @@ def main():
         print("\nTo install dependencies, run:", file=sys.stderr)
         print("  pip install -e .", file=sys.stderr)
         print("  # or", file=sys.stderr)
-        print("  pip install typer python-igraph statsmodels rich pydantic structlog async-timeout", file=sys.stderr)
+        print("  pip install typer python-igraph statsmodels rich pydantic structlog cryptography", file=sys.stderr)
         sys.exit(1)
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)

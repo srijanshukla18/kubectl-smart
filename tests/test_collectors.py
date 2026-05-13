@@ -444,6 +444,24 @@ class TestGlobalRegistry:
 class TestRunKubectl:
     """Tests for _run_kubectl method"""
 
+    class HangingProcess:
+        """Subprocess test double that only exits after kill and drain."""
+
+        def __init__(self):
+            self.returncode = None
+            self.killed = False
+            self.communicate_calls = 0
+
+        async def communicate(self):
+            self.communicate_calls += 1
+            if self.communicate_calls == 1:
+                await asyncio.Future()
+            return b"", b""
+
+        def kill(self):
+            self.killed = True
+            self.returncode = -9
+
     @pytest.mark.asyncio
     @patch("asyncio.create_subprocess_exec")
     @patch("subprocess.run")
@@ -514,6 +532,30 @@ class TestRunKubectl:
         result = await collector._run_kubectl(["get", "pods"], subject)
         assert result["kind"] == "List"
         assert mock_exec.call_count == 2
+
+    @pytest.mark.asyncio
+    @patch("asyncio.sleep", new_callable=AsyncMock)
+    @patch("asyncio.create_subprocess_exec")
+    @patch("subprocess.run")
+    async def test_run_kubectl_timeout_kills_processes(
+        self, mock_run, mock_exec, _mock_sleep
+    ):
+        """Timed-out kubectl subprocesses are killed and drained before retrying."""
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout="/usr/local/bin/kubectl\n", stderr=""
+        )
+        processes = [self.HangingProcess() for _ in range(3)]
+        mock_exec.side_effect = processes
+
+        collector = KubectlGet(resource_type="pods", timeout_seconds=0.01)
+        subject = SubjectCtx(kind=ResourceKind.POD, name="", namespace="default")
+
+        with pytest.raises(TimeoutError, match="timed out"):
+            await collector._run_kubectl(["get", "pods"], subject)
+
+        assert mock_exec.call_count == 3
+        assert all(process.killed for process in processes)
+        assert all(process.communicate_calls == 2 for process in processes)
 
     @pytest.mark.asyncio
     @patch("asyncio.create_subprocess_exec")

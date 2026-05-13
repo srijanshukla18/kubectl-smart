@@ -14,7 +14,6 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 import structlog
-from async_timeout import timeout
 
 from ..models import RawBlob, SubjectCtx
 
@@ -139,30 +138,29 @@ class Collector(ABC):
         last_error: Optional[Exception] = None
         while attempt < 3:
             try:
-                async with timeout(self.timeout_seconds):
-                    process = await asyncio.create_subprocess_exec(
-                        *cmd,
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.PIPE
-                    )
-                    stdout, stderr = await process.communicate()
-                    if process.returncode != 0:
-                        error_msg = stderr.decode() if stderr else "Unknown error"
-                        lower = error_msg.lower()
-                        if any(phrase in lower for phrase in ['forbidden', 'unauthorized', 'access denied', 'rbac', 'permission denied']):
-                            raise RBACError(f"RBAC permission denied: {error_msg}")
-                        # Retry on transient network/http errors
-                        if any(x in lower for x in ['timeout', 'temporarily unavailable', 'i/o timeout', 'connection refused']):
-                            raise TransientKubectlError(error_msg)
-                        # Non-retryable
-                        raise KubectlError(error_msg)
-                    output_str = stdout.decode()
-                    if output_format == "json" and output_str.strip():
-                        try:
-                            return json.loads(output_str)
-                        except json.JSONDecodeError as e:
-                            raise CollectorError(f"Failed to parse kubectl JSON output: {e}")
-                    return {"raw": output_str}
+                process = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                stdout, stderr = await self._communicate_with_timeout(process)
+                if process.returncode != 0:
+                    error_msg = stderr.decode() if stderr else "Unknown error"
+                    lower = error_msg.lower()
+                    if any(phrase in lower for phrase in ['forbidden', 'unauthorized', 'access denied', 'rbac', 'permission denied']):
+                        raise RBACError(f"RBAC permission denied: {error_msg}")
+                    # Retry on transient network/http errors
+                    if any(x in lower for x in ['timeout', 'temporarily unavailable', 'i/o timeout', 'connection refused']):
+                        raise TransientKubectlError(error_msg)
+                    # Non-retryable
+                    raise KubectlError(error_msg)
+                output_str = stdout.decode()
+                if output_format == "json" and output_str.strip():
+                    try:
+                        return json.loads(output_str)
+                    except json.JSONDecodeError as e:
+                        raise CollectorError(f"Failed to parse kubectl JSON output: {e}")
+                return {"raw": output_str}
             except (TransientKubectlError, asyncio.TimeoutError) as e:
                 last_error = e
                 attempt += 1
@@ -176,6 +174,24 @@ class Collector(ABC):
         if isinstance(last_error, KubectlError):
             raise last_error
         raise CollectorError("kubectl command failed (retries exhausted)")
+
+    async def _communicate_with_timeout(self, process) -> tuple[bytes, bytes]:
+        """Wait for kubectl output and kill the child if it exceeds the timeout."""
+        try:
+            return await asyncio.wait_for(
+                process.communicate(),
+                timeout=self.timeout_seconds,
+            )
+        except asyncio.TimeoutError:
+            process.kill()
+            try:
+                await process.communicate()
+            except Exception as cleanup_error:
+                logger.debug(
+                    "Failed to drain kubectl process after timeout",
+                    error=str(cleanup_error),
+                )
+            raise
     
     def _create_blob(
         self,
