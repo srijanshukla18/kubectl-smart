@@ -20,6 +20,22 @@ from ..models import RawBlob, SubjectCtx
 logger = structlog.get_logger(__name__)
 
 READ_ONLY_KUBECTL_VERBS = frozenset({"get", "describe", "logs", "top"})
+TRANSIENT_KUBECTL_ERROR_MARKERS = (
+    "timeout",
+    "timed out",
+    "temporarily unavailable",
+    "i/o timeout",
+    "connection refused",
+    "connection reset",
+    "context deadline exceeded",
+    "deadline exceeded",
+    "too many requests",
+    "429",
+    "serviceunavailable",
+    "service unavailable",
+    "gateway timeout",
+    "tls handshake timeout",
+)
 
 
 class CollectorError(Exception):
@@ -155,7 +171,7 @@ class Collector(ABC):
                     if any(phrase in lower for phrase in ['forbidden', 'unauthorized', 'access denied', 'rbac', 'permission denied']):
                         raise RBACError(f"RBAC permission denied: {error_msg}")
                     # Retry on transient network/http errors
-                    if any(x in lower for x in ['timeout', 'temporarily unavailable', 'i/o timeout', 'connection refused']):
+                    if any(x in lower for x in TRANSIENT_KUBECTL_ERROR_MARKERS):
                         raise TransientKubectlError(error_msg)
                     # Non-retryable
                     raise KubectlError(error_msg)

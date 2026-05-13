@@ -666,6 +666,36 @@ class TestRunKubectl:
     @patch("asyncio.sleep", new_callable=AsyncMock)
     @patch("asyncio.create_subprocess_exec")
     @patch("subprocess.run")
+    async def test_run_kubectl_retries_apiserver_pressure(
+        self, mock_run, mock_exec, _mock_sleep
+    ):
+        """Test apiserver pressure errors are treated as transient."""
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout="/usr/local/bin/kubectl\n", stderr=""
+        )
+        fail_process = AsyncMock()
+        fail_process.returncode = 1
+        fail_process.communicate.return_value = (
+            b"",
+            b"Error from server (TooManyRequests): the server has received too many requests",
+        )
+        ok_process = AsyncMock()
+        ok_process.returncode = 0
+        ok_process.communicate.return_value = (b'{"kind": "List", "items": []}', b"")
+        mock_exec.side_effect = [fail_process, ok_process]
+
+        collector = KubectlGet(resource_type="pods")
+        subject = SubjectCtx(kind=ResourceKind.POD, name="", namespace="default")
+
+        result = await collector._run_kubectl(["get", "pods"], subject)
+
+        assert result["kind"] == "List"
+        assert mock_exec.call_count == 2
+
+    @pytest.mark.asyncio
+    @patch("asyncio.sleep", new_callable=AsyncMock)
+    @patch("asyncio.create_subprocess_exec")
+    @patch("subprocess.run")
     async def test_run_kubectl_timeout_kills_processes(
         self, mock_run, mock_exec, _mock_sleep
     ):
