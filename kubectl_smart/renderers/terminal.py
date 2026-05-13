@@ -215,7 +215,12 @@ class TerminalRenderer:
         for gap in data_gaps[:5]:
             console.print(f"  [dim]• {gap}[/dim]")
     
-    def render_error(self, error_msg: str, details: Optional[str] = None) -> str:
+    def render_error(
+        self,
+        error_msg: str,
+        details: Optional[str] = None,
+        data_gaps: Optional[List[str]] = None,
+    ) -> str:
         """Render error message with optional details"""
         console = Console(file=None, width=self.console.size.width)
         
@@ -223,6 +228,7 @@ class TerminalRenderer:
             console.print(f"[red]❌ Error:[/red] {error_msg}")
             if details:
                 console.print(f"[dim]{details}[/dim]")
+            self._render_data_gaps(console, data_gaps or [])
         
         return capture.get()
     

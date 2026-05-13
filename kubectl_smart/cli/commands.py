@@ -382,7 +382,10 @@ class DiagCommand(BaseCommand):
             logger.error("Diagnosis command failed", error=str(e))
             
             renderer = TerminalRenderer(colors_enabled=self.config.colors_enabled)
-            output = renderer.render_error(f"Diagnosis failed: {e}")
+            output = renderer.render_error(
+                f"Diagnosis failed: {e}",
+                data_gaps=self.data_gaps,
+            )
             
             logger.debug(f"DiagCommand returning exit_code=2 due to exception: {e}")
             return CommandResult(output=output, exit_code=2, analysis_duration=analysis_duration)
@@ -625,7 +628,10 @@ class GraphCommand(BaseCommand):
             if not target_uid:
                 analysis_duration = time.time() - start_time
                 renderer = TerminalRenderer(colors_enabled=self.config.colors_enabled)
-                output = renderer.render_error(f"Resource {subject.full_name} not found in graph")
+                output = renderer.render_error(
+                    f"Resource {subject.full_name} not found in graph",
+                    data_gaps=self.data_gaps,
+                )
                 
                 # All errors return exit_code=2
                 return CommandResult(output=output, exit_code=2, analysis_duration=analysis_duration)
@@ -686,7 +692,10 @@ class GraphCommand(BaseCommand):
             logger.error("Graph command failed", error=str(e))
             
             renderer = TerminalRenderer(colors_enabled=self.config.colors_enabled)
-            output = renderer.render_error(f"Graph analysis failed: {e}")
+            output = renderer.render_error(
+                f"Graph analysis failed: {e}",
+                data_gaps=self.data_gaps,
+            )
                 
             logger.debug(f"GraphCommand returning exit_code=2 due to exception: {e}")
             return CommandResult(output=output, exit_code=2, analysis_duration=analysis_duration)
@@ -795,7 +804,10 @@ class TopCommand(BaseCommand):
             logger.error("Top command failed", error=str(e))
             
             renderer = TerminalRenderer(colors_enabled=self.config.colors_enabled)
-            output = renderer.render_error(f"Predictive analysis failed: {e}")
+            output = renderer.render_error(
+                f"Predictive analysis failed: {e}",
+                data_gaps=self.data_gaps,
+            )
                 
             # All errors return exit_code=2
             return CommandResult(output=output, exit_code=2, analysis_duration=analysis_duration)

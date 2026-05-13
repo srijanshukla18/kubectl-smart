@@ -4,7 +4,7 @@
 
 - Unit test command: `uv run --extra dev pytest`
 - Coverage command: `uv run --extra dev pytest --cov=kubectl_smart --cov-report=term-missing`
-- Latest local result: `417 passed`
+- Latest local result: `419 passed`
 - Latest measured coverage: `83%`
 
 Coverage is measured, not estimated. The default `pytest` command does not enforce
@@ -15,6 +15,7 @@ coverage command above when working on test depth.
 
 - Data models and validation
 - Not-found diagnoses preserve data gaps and nonzero exit codes
+- Command error rendering preserves data gaps
 - Kubernetes collectors and parser selection
 - Shared kubectl runner read-only guardrails
 - Cloud-provider kube context names and malformed context rejection

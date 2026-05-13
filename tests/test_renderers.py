@@ -412,6 +412,18 @@ class TestRenderError:
         assert "Main error" in output
         assert "Additional details here" in output
 
+    def test_render_error_with_data_gaps(self):
+        """Test error rendering can preserve incomplete evidence context."""
+        renderer = TerminalRenderer(colors_enabled=False)
+        output = renderer.render_error(
+            "Graph analysis failed",
+            data_gaps=["get secrets unavailable (rbac): forbidden"],
+        )
+
+        assert "Graph analysis failed" in output
+        assert "DATA GAPS" in output
+        assert "get secrets unavailable (rbac): forbidden" in output
+
 
 class TestRenderRbacError:
     """Tests for render_rbac_error method"""
