@@ -607,6 +607,22 @@ class TestJsonRenderer:
         assert 'secret \\"token\\" not found' in output
         assert '"data_gaps"' in output
 
+    def test_render_diagnosis_includes_data_gap_summary(
+        self, sample_subject_ctx, sample_resource_record
+    ):
+        """Test JSON diagnosis exposes machine-readable completeness."""
+        result = DiagnosisResult(
+            subject=sample_subject_ctx,
+            resource=sample_resource_record,
+            data_gaps=["events unavailable (rbac): forbidden"],
+            analysis_duration=1.0,
+        )
+
+        output = JsonRenderer().render_diagnosis(result)
+
+        assert '"data_gap_count": 1' in output
+        assert '"analysis_complete": false' in output
+
     def test_render_batch_includes_data_gaps(
         self, sample_subject_ctx, sample_resource_record
     ):
@@ -631,6 +647,7 @@ class TestJsonRenderer:
         )
 
         assert '"data_gaps": 1' in output
+        assert '"analysis_complete": false' in output
         assert '"max_concurrent": 2' in output
         assert '"data_gap_count": 1' in output
         assert "events events unavailable" in output

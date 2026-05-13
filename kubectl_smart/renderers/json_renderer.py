@@ -68,6 +68,8 @@ class JsonRenderer:
                 self._serialize_event(e) for e in result.recent_events
             ],
             "data_gaps": result.data_gaps,
+            "data_gap_count": len(result.data_gaps),
+            "analysis_complete": not result.data_gaps,
             "analysis_duration_seconds": result.analysis_duration,
             "timestamp": result.timestamp.isoformat(),
             "exit_code": result.exit_code,
@@ -137,6 +139,7 @@ class JsonRenderer:
                 exit_code = 0
         critical_count = sum(len(r.critical_issues) for r in results)
         warning_count = sum(len(r.warning_issues) for r in results)
+        data_gap_count = sum(len(r.data_gaps) for r in results)
 
         output = {
             "type": "batch_diagnosis",
@@ -147,7 +150,8 @@ class JsonRenderer:
                 "critical": critical_count,
                 "warning": warning_count,
                 "duration_seconds": batch_info.get("duration", 0),
-                "data_gaps": sum(len(r.data_gaps) for r in results),
+                "data_gaps": data_gap_count,
+                "analysis_complete": not failed and data_gap_count == 0,
                 "max_concurrent": batch_info.get("max_concurrent"),
                 "exit_code": exit_code,
             },

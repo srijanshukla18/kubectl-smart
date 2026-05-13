@@ -132,6 +132,7 @@ log "Checking restricted batch JSON preserves per-resource data gaps..."
 restricted_batch_json="$(capture restricted_batch_json env KUBECONFIG="$RBAC_KUBECONFIG" kubectl-smart diag pod --all -n "$NAMESPACE" -o json)"
 assert_status restricted_batch_json 2
 assert_contains "$restricted_batch_json" '"data_gaps": 6' "restricted batch total gaps"
+assert_contains "$restricted_batch_json" '"analysis_complete": false' "restricted batch incomplete summary"
 assert_contains "$restricted_batch_json" '"data_gap_count": 2' "restricted batch per-resource gaps"
 assert_contains "$restricted_batch_json" 'cannot get resource \"pods/log\"' "restricted batch log evidence"
 
