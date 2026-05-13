@@ -210,12 +210,29 @@ class KubernetesResourceParser(Parser):
                     return 'Ready' if condition.get('status') == 'True' else 'NotReady'
             return 'Unknown'
         
-        elif kind in [ResourceKind.DEPLOYMENT, ResourceKind.STATEFULSET, ResourceKind.DAEMONSET]:
+        elif kind == ResourceKind.DEPLOYMENT:
             conditions = status_obj.get('conditions', [])
             for condition in conditions:
                 if condition.get('type') == 'Available':
                     return 'Available' if condition.get('status') == 'True' else 'Unavailable'
-            return 'Unknown'
+            replicas = status_obj.get('replicas') or data.get('spec', {}).get('replicas') or 0
+            available = status_obj.get('availableReplicas') or 0
+            return 'Available' if replicas and available >= replicas else 'Unavailable'
+
+        elif kind == ResourceKind.STATEFULSET:
+            replicas = status_obj.get('replicas') or data.get('spec', {}).get('replicas') or 0
+            ready = status_obj.get('readyReplicas') or 0
+            return 'Available' if replicas and ready >= replicas else 'Unavailable'
+
+        elif kind == ResourceKind.DAEMONSET:
+            desired = status_obj.get('desiredNumberScheduled') or 0
+            available = status_obj.get('numberAvailable') or 0
+            return 'Available' if desired and available >= desired else 'Unavailable'
+
+        elif kind == ResourceKind.REPLICASET:
+            replicas = status_obj.get('replicas') or data.get('spec', {}).get('replicas') or 0
+            ready = status_obj.get('readyReplicas') or status_obj.get('availableReplicas') or 0
+            return 'Available' if replicas and ready >= replicas else 'Unavailable'
         
         elif kind == ResourceKind.PVC:
             return status_obj.get('phase', 'Unknown')

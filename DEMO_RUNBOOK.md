@@ -27,7 +27,7 @@ shape: ServiceAccount, ConfigMap, Secret, PVC, Node, Service, an intentionally
 empty inventory Service, and a short-lived TLS certificate.
 
 ```bash
-kubectl-smart diag pod checkout-api-0 -n kubectl-smart-complex
+kubectl-smart diag sts checkout-api -n kubectl-smart-complex
 kubectl-smart graph pod checkout-api-0 -n kubectl-smart-complex --upstream --downstream
 kubectl-smart diag svc inventory-db -n kubectl-smart-complex
 kubectl-smart graph ingress checkout-demo -n kubectl-smart-complex --upstream --downstream

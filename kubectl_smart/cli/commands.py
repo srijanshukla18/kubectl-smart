@@ -174,6 +174,23 @@ class DiagCommand(BaseCommand):
         collector_names = ['get', 'describe', 'events', 'logs']
         all_resources = await self._collect_data(subject, collector_names)
 
+        if self._is_controller_kind(subject.kind):
+            all_resources.extend(await self._collect_controller_context(subject))
+            all_resources = self._dedupe_resources(all_resources)
+            target_resource = self._find_subject_resource(subject, all_resources)
+            if target_resource:
+                child_pods = [
+                    resource for resource in self._controller_child_resources(
+                        target_resource,
+                        all_resources,
+                    )
+                    if resource.kind == ResourceKind.POD
+                ]
+                all_resources.extend(
+                    await self._collect_child_pod_logs(subject, child_pods)
+                )
+                all_resources = self._dedupe_resources(all_resources)
+
         if subject.kind == ResourceKind.SERVICE:
             endpoints_collector = self._create_collector('get', resource_type='endpoints')
             endpoints_blob = await endpoints_collector.collect(subject)
@@ -194,6 +211,389 @@ class DiagCommand(BaseCommand):
                 self._add_data_gap(f"pods output could not be parsed: {str(e).splitlines()[0]}")
 
         return all_resources
+
+    def _is_controller_kind(self, kind: ResourceKind) -> bool:
+        return kind in {
+            ResourceKind.DEPLOYMENT,
+            ResourceKind.REPLICASET,
+            ResourceKind.STATEFULSET,
+            ResourceKind.DAEMONSET,
+            ResourceKind.JOB,
+        }
+
+    def _dedupe_resources(self, resources: List[ResourceRecord]) -> List[ResourceRecord]:
+        deduped: List[ResourceRecord] = []
+        seen: set[tuple[str, str, str, str]] = set()
+
+        for resource in resources:
+            key = (
+                resource.kind.value,
+                resource.namespace or "",
+                resource.name,
+                resource.uid,
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(resource)
+
+        return deduped
+
+    def _find_subject_resource(
+        self,
+        subject: SubjectCtx,
+        all_resources: List[ResourceRecord],
+    ) -> Optional[ResourceRecord]:
+        for resource in all_resources:
+            if (
+                resource.kind == subject.kind
+                and resource.name == subject.name
+                and resource.namespace == subject.namespace
+            ):
+                return resource
+        return None
+
+    async def _collect_controller_context(
+        self,
+        subject: SubjectCtx,
+    ) -> List[ResourceRecord]:
+        resource_types = ["pods"]
+        if subject.kind == ResourceKind.DEPLOYMENT:
+            resource_types.append("replicasets")
+
+        collectors = []
+        subjects = []
+        list_subject = subject.model_copy(update={"name": ""})
+
+        for resource_type in resource_types:
+            try:
+                collectors.append(self._create_collector("get", resource_type=resource_type))
+                subjects.append(list_subject)
+            except Exception as e:
+                logger.warning("Failed to create controller context collector", resource_type=resource_type, error=str(e))
+                self._record_collector_creation_gap("get", e, resource_type)
+
+        try:
+            collectors.append(self._create_collector("events"))
+            subjects.append(list_subject)
+        except Exception as e:
+            logger.warning("Failed to create controller event collector", error=str(e))
+            self._record_collector_creation_gap("events", e, "events")
+
+        blobs = await asyncio.gather(
+            *[
+                collector.collect(collector_subject)
+                for collector, collector_subject in zip(collectors, subjects)
+            ],
+            return_exceptions=True,
+        )
+
+        resources = []
+        for i, blob in enumerate(blobs):
+            if isinstance(blob, Exception):
+                logger.warning("Controller context collector failed", collector=collectors[i].name, error=str(blob))
+                self._record_exception_gap(collectors[i].name, blob)
+                continue
+
+            self._record_blob_gap(blob)
+            try:
+                resources.extend(parser_registry.parse(blob))
+            except Exception as e:
+                logger.warning("Failed to parse controller context", collector=collectors[i].name, error=str(e))
+                self._add_data_gap(f"{collectors[i].name} output could not be parsed: {str(e).splitlines()[0]}")
+
+        return resources
+
+    async def _collect_child_pod_logs(
+        self,
+        subject: SubjectCtx,
+        child_pods: List[ResourceRecord],
+    ) -> List[ResourceRecord]:
+        if not child_pods:
+            return []
+
+        log_targets = [
+            pod for pod in child_pods
+            if self._pod_needs_child_log_collection(pod)
+        ]
+        if not log_targets:
+            return []
+        log_targets = log_targets[:3]
+
+        collectors = []
+        subjects = []
+        for pod in log_targets:
+            try:
+                collectors.append(self._create_collector("logs"))
+                subjects.append(
+                    SubjectCtx(
+                        kind=ResourceKind.POD,
+                        name=pod.name,
+                        namespace=pod.namespace,
+                        context=subject.context,
+                    )
+                )
+            except Exception as e:
+                logger.warning("Failed to create child pod log collector", pod=pod.name, error=str(e))
+                self._record_collector_creation_gap("logs", e, "pods")
+
+        blobs = await asyncio.gather(
+            *[
+                collector.collect(collector_subject)
+                for collector, collector_subject in zip(collectors, subjects)
+            ],
+            return_exceptions=True,
+        )
+
+        resources = []
+        for i, blob in enumerate(blobs):
+            if isinstance(blob, Exception):
+                logger.warning("Child pod log collector failed", collector=collectors[i].name, error=str(blob))
+                self._record_exception_gap(collectors[i].name, blob)
+                continue
+
+            self._record_blob_gap(blob)
+            try:
+                resources.extend(parser_registry.parse(blob))
+            except Exception as e:
+                logger.warning("Failed to parse child pod logs", collector=collectors[i].name, error=str(e))
+                self._add_data_gap(f"{collectors[i].name} output could not be parsed: {str(e).splitlines()[0]}")
+
+        return resources
+
+    def _pod_needs_child_log_collection(self, pod: ResourceRecord) -> bool:
+        unhealthy_statuses = {
+            "Failed",
+            "Pending",
+            "Unknown",
+            "Error",
+            "CrashLoopBackOff",
+            "ImagePullBackOff",
+            "ErrImagePull",
+            "CreateContainerConfigError",
+        }
+        if pod.status in unhealthy_statuses:
+            return True
+
+        status = pod.properties.get("status", {})
+        if not isinstance(status, dict):
+            return False
+
+        for condition in status.get("conditions", []) or []:
+            if (
+                condition.get("type") in {"Ready", "ContainersReady"}
+                and condition.get("status") == "False"
+            ):
+                return True
+
+        return False
+
+    def _owner_refs(self, resource: ResourceRecord) -> List[Dict[str, str]]:
+        owner_refs = resource.get_property("metadata.ownerReferences", [])
+        return owner_refs if isinstance(owner_refs, list) else []
+
+    def _is_owned_by(self, resource: ResourceRecord, owner: ResourceRecord) -> bool:
+        return any(
+            owner_ref.get("kind") == owner.kind.value
+            and owner_ref.get("uid") == owner.uid
+            for owner_ref in self._owner_refs(resource)
+        )
+
+    def _match_label_selector(self, resource: ResourceRecord) -> Dict[str, str]:
+        selector = resource.get_property("spec.selector", {}) or {}
+        if not isinstance(selector, dict):
+            return {}
+        match_labels = selector.get("matchLabels")
+        if isinstance(match_labels, dict):
+            return match_labels
+        return selector
+
+    def _controller_child_resources(
+        self,
+        target_resource: ResourceRecord,
+        all_resources: List[ResourceRecord],
+    ) -> List[ResourceRecord]:
+        if not self._is_controller_kind(target_resource.kind):
+            return []
+
+        namespace_resources = [
+            resource for resource in all_resources
+            if resource.namespace == target_resource.namespace
+        ]
+        pods = [
+            resource for resource in namespace_resources
+            if resource.kind == ResourceKind.POD
+        ]
+        replicasets = [
+            resource for resource in namespace_resources
+            if resource.kind == ResourceKind.REPLICASET
+        ]
+
+        children: List[ResourceRecord] = []
+        if target_resource.kind == ResourceKind.DEPLOYMENT:
+            owned_replicasets = [
+                replicaset for replicaset in replicasets
+                if self._is_owned_by(replicaset, target_resource)
+            ]
+            owned_rs_uids = {replicaset.uid for replicaset in owned_replicasets}
+            children.extend(owned_replicasets)
+            children.extend(
+                pod for pod in pods
+                if any(
+                    owner_ref.get("kind") == ResourceKind.REPLICASET.value
+                    and owner_ref.get("uid") in owned_rs_uids
+                    for owner_ref in self._owner_refs(pod)
+                )
+            )
+        else:
+            children.extend(
+                pod for pod in pods
+                if self._is_owned_by(pod, target_resource)
+            )
+
+        if not any(child.kind == ResourceKind.POD for child in children):
+            selector = self._match_label_selector(target_resource)
+            children.extend(
+                pod for pod in pods
+                if self._pod_matches_selector(pod, selector)
+            )
+
+        if target_resource.kind == ResourceKind.STATEFULSET:
+            children.extend(
+                pod for pod in pods
+                if pod.name.startswith(f"{target_resource.name}-")
+            )
+
+        return self._dedupe_resources(children)
+
+    def _controller_relationship_evidence(
+        self,
+        target_resource: ResourceRecord,
+        child: ResourceRecord,
+        all_resources: List[ResourceRecord],
+    ) -> str:
+        if self._is_owned_by(child, target_resource):
+            return (
+                f"OwnerReference: {child.full_name} is owned by "
+                f"{target_resource.full_name}"
+            )
+
+        if target_resource.kind == ResourceKind.DEPLOYMENT and child.kind == ResourceKind.POD:
+            owned_replicasets = [
+                resource for resource in all_resources
+                if resource.kind == ResourceKind.REPLICASET
+                and resource.namespace == target_resource.namespace
+                and self._is_owned_by(resource, target_resource)
+            ]
+            for replicaset in owned_replicasets:
+                if self._is_owned_by(child, replicaset):
+                    return (
+                        f"OwnerReference chain: {target_resource.full_name} -> "
+                        f"{replicaset.full_name} -> {child.full_name}"
+                    )
+
+        selector = self._selector_string(self._match_label_selector(target_resource))
+        return (
+            f"Selector relationship: {child.full_name} matches "
+            f"{target_resource.full_name} selector {selector}"
+        )
+
+    def _child_issue_actions(
+        self,
+        issue: Issue,
+        child: ResourceRecord,
+    ) -> List[str]:
+        actions = list(issue.suggested_actions)
+        if child.kind == ResourceKind.POD:
+            if child.namespace:
+                actions.append(f"Inspect child pod: kubectl describe pod {child.name} -n {child.namespace}")
+                actions.append(f"Inspect child pod logs: kubectl logs {child.name} -n {child.namespace} --previous")
+                actions.append(
+                    "Check child pod events: "
+                    f"kubectl get events -n {child.namespace} "
+                    f"--field-selector involvedObject.name={child.name}"
+                )
+            else:
+                actions.append(f"Inspect child pod: kubectl describe pod {child.name}")
+                actions.append(f"Inspect child pod logs: kubectl logs {child.name} --previous")
+
+        return list(dict.fromkeys(actions))
+
+    def _promote_controller_child_issues(
+        self,
+        target_resource: ResourceRecord,
+        issues: List[Issue],
+        all_resources: List[ResourceRecord],
+    ) -> List[Issue]:
+        child_resources = self._controller_child_resources(target_resource, all_resources)
+        child_by_uid = {resource.uid: resource for resource in child_resources}
+        promoted: List[Issue] = []
+
+        for issue in issues:
+            child = child_by_uid.get(issue.resource_uid)
+            if not child:
+                continue
+
+            relationship = self._controller_relationship_evidence(
+                target_resource,
+                child,
+                all_resources,
+            )
+            promoted.append(
+                Issue(
+                    resource_uid=target_resource.uid,
+                    title=f"{child.kind.value} {child.name}: {issue.title}",
+                    description=(
+                        f"{target_resource.kind.value} {target_resource.name} has "
+                        f"an unhealthy child {child.kind.value} {child.name}: "
+                        f"{issue.description}"
+                    ),
+                    reason=f"Child{issue.reason}",
+                    message=f"{child.full_name}: {issue.message}",
+                    timestamp=issue.timestamp,
+                    critical_path=True,
+                    severity=issue.severity,
+                    score=issue.score,
+                    evidence=[relationship, *issue.evidence],
+                    related_events=issue.related_events,
+                    suggested_actions=self._child_issue_actions(issue, child),
+                    metadata={
+                        **issue.metadata,
+                        "source_issue_resource_uid": issue.resource_uid,
+                        "child_resource": child.full_name,
+                    },
+                )
+            )
+
+        return promoted
+
+    def _events_related_to_resources(
+        self,
+        events: List[ResourceRecord],
+        resources: List[ResourceRecord],
+    ) -> List[ResourceRecord]:
+        resource_uids = {resource.uid for resource in resources}
+        resource_names = {
+            (resource.kind.value, resource.name, resource.namespace)
+            for resource in resources
+        }
+        related = []
+        for event in events:
+            involved = event.properties.get("involvedObject", {})
+            involved_uid = involved.get("uid")
+            if involved_uid and involved_uid in resource_uids:
+                related.append(event)
+                continue
+
+            event_name = (
+                involved.get("kind"),
+                involved.get("name"),
+                involved.get("namespace", event.namespace),
+            )
+            if event_name in resource_names:
+                related.append(event)
+
+        return related
 
     def _selector_string(self, selector: Dict[str, str]) -> str:
         if not selector:
@@ -300,13 +700,7 @@ class DiagCommand(BaseCommand):
             self.graph_builder.add_resources(all_resources)
             
             # Find target resource
-            target_resource = None
-            for resource in all_resources:
-                if (resource.kind == subject.kind and 
-                    resource.name == subject.name and
-                    resource.namespace == subject.namespace):
-                    target_resource = resource
-                    break
+            target_resource = self._find_subject_resource(subject, all_resources)
             
             if not target_resource:
                 # Resource not found
@@ -337,10 +731,17 @@ class DiagCommand(BaseCommand):
                 issue for issue in issues 
                 if issue.resource_uid == target_resource.uid
             ]
+            target_issues.extend(
+                self._promote_controller_child_issues(
+                    target_resource,
+                    issues,
+                    all_resources,
+                )
+            )
             service_endpoint_issue = self._service_endpoint_issue(target_resource, all_resources)
             if service_endpoint_issue:
                 target_issues.append(service_endpoint_issue)
-                target_issues.sort(key=self.scoring_engine._issue_sort_key)
+            target_issues.sort(key=self.scoring_engine._issue_sort_key)
             
             # Identify root cause and contributing factors
             root_cause = self.scoring_engine.get_root_cause(target_issues)
@@ -348,6 +749,10 @@ class DiagCommand(BaseCommand):
             
             # Generate suggested actions
             suggested_actions = self._generate_suggested_actions(target_resource, root_cause, contributing_factors)
+            related_resources = [
+                target_resource,
+                *self._controller_child_resources(target_resource, all_resources),
+            ]
             
             analysis_duration = time.time() - start_time
             
@@ -359,7 +764,7 @@ class DiagCommand(BaseCommand):
                 root_cause=root_cause,
                 contributing_factors=contributing_factors,
                 suggested_actions=suggested_actions,
-                recent_events=events[:5], # Top 5 recent events
+                recent_events=self._events_related_to_resources(events, related_resources)[:5],
                 data_gaps=self.data_gaps,
                 analysis_duration=analysis_duration,
             )
@@ -401,13 +806,7 @@ class DiagCommand(BaseCommand):
         self.graph_builder.add_resources(all_resources)
 
         # Find target resource
-        target_resource = None
-        for resource in all_resources:
-            if (resource.kind == subject.kind and
-                resource.name == subject.name and
-                resource.namespace == subject.namespace):
-                target_resource = resource
-                break
+        target_resource = self._find_subject_resource(subject, all_resources)
 
         if not target_resource:
             return DiagnosisResult(
@@ -427,10 +826,17 @@ class DiagCommand(BaseCommand):
             issue for issue in issues
             if issue.resource_uid == target_resource.uid
         ]
+        target_issues.extend(
+            self._promote_controller_child_issues(
+                target_resource,
+                issues,
+                all_resources,
+            )
+        )
         service_endpoint_issue = self._service_endpoint_issue(target_resource, all_resources)
         if service_endpoint_issue:
             target_issues.append(service_endpoint_issue)
-            target_issues.sort(key=self.scoring_engine._issue_sort_key)
+        target_issues.sort(key=self.scoring_engine._issue_sort_key)
 
         # Identify root cause and contributing factors
         root_cause = self.scoring_engine.get_root_cause(target_issues)
@@ -438,6 +844,10 @@ class DiagCommand(BaseCommand):
 
         # Generate suggested actions
         suggested_actions = self._generate_suggested_actions(target_resource, root_cause, contributing_factors)
+        related_resources = [
+            target_resource,
+            *self._controller_child_resources(target_resource, all_resources),
+        ]
 
         analysis_duration = time.time() - start_time
 
@@ -448,7 +858,7 @@ class DiagCommand(BaseCommand):
             root_cause=root_cause,
             contributing_factors=contributing_factors,
             suggested_actions=suggested_actions,
-            recent_events=events[:5],
+            recent_events=self._events_related_to_resources(events, related_resources)[:5],
             data_gaps=self.data_gaps,
             analysis_duration=analysis_duration,
         )
@@ -473,7 +883,11 @@ class DiagCommand(BaseCommand):
         )
         
         # Generic actions based on resource status
-        if resource.status in ['Failed', 'Pending', 'Unknown'] and not missing_config_ref:
+        if (
+            resource.kind == ResourceKind.POD
+            and resource.status in ['Failed', 'Pending', 'Unknown']
+            and not missing_config_ref
+        ):
             actions.append(f"Check logs: kubectl logs {resource.name}")
             if resource.namespace:
                 actions[-1] += f" -n {resource.namespace}"
@@ -525,6 +939,8 @@ class DiagCommand(BaseCommand):
                 actions.extend(root_cause.suggested_actions)
             elif 'logfailure' in reason:
                 actions.extend(root_cause.suggested_actions)
+            if reason.startswith('child'):
+                actions.extend(root_cause.suggested_actions)
         
         # Actions based on resource type
         if resource.kind.value == "Pod":
@@ -532,7 +948,7 @@ class DiagCommand(BaseCommand):
             if resource.namespace:
                 actions[-1] += f" -n {resource.namespace}"
         
-        return actions[:self.config.max_suggested_actions]
+        return list(dict.fromkeys(actions))[:self.config.max_suggested_actions]
 
 
 class GraphCommand(BaseCommand):

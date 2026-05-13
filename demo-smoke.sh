@@ -103,6 +103,14 @@ assert_contains "$checkout_diag" "LIKELY ROOT CAUSE" "checkout root cause sectio
 assert_contains "$checkout_diag" "Evidence:" "checkout evidence section"
 assert_contains "$checkout_diag" "Log line:" "checkout log evidence"
 
+log "Checking StatefulSet diagnosis promotes child pod evidence..."
+checkout_sts_diag="$(capture checkout_sts_diag "${KUBECTL_SMART_CMD[@]}" diag sts checkout-api -n "$NAMESPACE" --context "$KUBECTL_SMART_CONTEXT")"
+assert_status checkout_sts_diag 2
+assert_contains "$checkout_sts_diag" "DIAGNOSIS: StatefulSet/${NAMESPACE}/checkout-api" "checkout statefulset header"
+assert_contains "$checkout_sts_diag" "Pod checkout-api-0: Log Errors" "checkout child pod root cause"
+assert_contains "$checkout_sts_diag" "OwnerReference: Pod/${NAMESPACE}/checkout-api-0 is owned by" "checkout child ownership evidence"
+assert_contains "$checkout_sts_diag" "StatefulSet/${NAMESPACE}/checkout-api" "checkout child owner evidence"
+
 log "Checking service diagnosis cites endpoint and selector evidence..."
 service_diag="$(capture service_diag "${KUBECTL_SMART_CMD[@]}" diag svc inventory-db -n "$NAMESPACE" --context "$KUBECTL_SMART_CONTEXT")"
 assert_status service_diag 2

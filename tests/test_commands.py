@@ -492,6 +492,42 @@ class TestDiagCommand:
 
         assert "Review full logs for context" in actions
 
+    def test_pod_needs_child_log_collection_only_for_unhealthy_children(self):
+        """Test controller diag does not scrape logs from healthy child Pods."""
+        cmd = DiagCommand()
+        healthy = ResourceRecord(
+            kind=ResourceKind.POD,
+            name="api-healthy",
+            uid="healthy-uid",
+            namespace="default",
+            status="Running",
+            properties={
+                "status": {
+                    "conditions": [
+                        {"type": "Ready", "status": "True"},
+                        {"type": "ContainersReady", "status": "True"},
+                    ]
+                }
+            },
+        )
+        unready = ResourceRecord(
+            kind=ResourceKind.POD,
+            name="api-unready",
+            uid="unready-uid",
+            namespace="default",
+            status="Running",
+            properties={
+                "status": {
+                    "conditions": [
+                        {"type": "Ready", "status": "False"},
+                    ]
+                }
+            },
+        )
+
+        assert cmd._pod_needs_child_log_collection(healthy) is False
+        assert cmd._pod_needs_child_log_collection(unready) is True
+
     @pytest.mark.asyncio
     @patch("kubectl_smart.cli.commands.collector_registry")
     @patch("kubectl_smart.cli.commands.parser_registry")
@@ -547,6 +583,109 @@ class TestDiagCommand:
         assert "Evidence" in result.output
         assert "ready addresses=0" in result.output
         assert "No Pods in namespace match selector app=inventory,tier=primary" in result.output
+
+    @pytest.mark.asyncio
+    @patch("kubectl_smart.cli.commands.collector_registry")
+    @patch("kubectl_smart.cli.commands.parser_registry")
+    async def test_execute_raw_deployment_promotes_child_pod_issue(
+        self, mock_parser_registry, mock_collector_registry
+    ):
+        """Test Deployment diagnosis follows ReplicaSet-owned Pods for root cause."""
+        deployment = ResourceRecord(
+            kind=ResourceKind.DEPLOYMENT,
+            name="checkout-api",
+            uid="deploy-uid",
+            namespace="default",
+            status="Available",
+            properties={
+                "metadata": {},
+                "spec": {"selector": {"matchLabels": {"app": "checkout-api"}}},
+                "status": {},
+            },
+        )
+        replicaset = ResourceRecord(
+            kind=ResourceKind.REPLICASET,
+            name="checkout-api-6d7f",
+            uid="rs-uid",
+            namespace="default",
+            status="Active",
+            properties={
+                "metadata": {
+                    "ownerReferences": [
+                        {"kind": "Deployment", "name": "checkout-api", "uid": "deploy-uid"}
+                    ]
+                },
+                "spec": {},
+                "status": {},
+            },
+        )
+        pod = ResourceRecord(
+            kind=ResourceKind.POD,
+            name="checkout-api-6d7f-k9x2m",
+            uid="pod-uid",
+            namespace="default",
+            status="CreateContainerConfigError",
+            labels={"app": "checkout-api"},
+            properties={
+                "metadata": {
+                    "ownerReferences": [
+                        {"kind": "ReplicaSet", "name": "checkout-api-6d7f", "uid": "rs-uid"}
+                    ]
+                },
+                "spec": {},
+                "status": {
+                    "containerStatuses": [
+                        {
+                            "name": "api",
+                            "state": {
+                                "waiting": {
+                                    "reason": "CreateContainerConfigError",
+                                    "message": 'secret "runtime-token" not found',
+                                }
+                            },
+                        }
+                    ]
+                },
+            },
+        )
+
+        mock_collector = MagicMock()
+        mock_collector.name = "kubectl_get"
+        mock_collector.collect = AsyncMock(
+            return_value=RawBlob(data={}, source="kubectl_get")
+        )
+        mock_collector_registry.create.return_value = mock_collector
+        mock_parser_registry.parse.side_effect = [
+            [deployment],
+            [],
+            [],
+            [],
+            [pod],
+            [replicaset],
+            [],
+            [],
+        ]
+
+        cmd = DiagCommand()
+        subject = SubjectCtx(
+            kind=ResourceKind.DEPLOYMENT,
+            name="checkout-api",
+            namespace="default",
+        )
+        result = await cmd.execute_raw(subject)
+
+        assert result.exit_code == 2
+        assert result.root_cause is not None
+        assert result.root_cause.resource_uid == deployment.uid
+        assert "Pod checkout-api-6d7f-k9x2m" in result.root_cause.title
+        assert result.root_cause.metadata["child_resource"] == pod.full_name
+        assert any("OwnerReference chain" in item for item in result.root_cause.evidence)
+        assert any('secret "runtime-token" not found' in item for item in result.root_cause.evidence)
+        assert result.suggested_actions[0] == (
+            "Verify missing Secret: kubectl get secret runtime-token -n default"
+        )
+        assert any("Inspect child pod" in action for action in result.suggested_actions)
+        assert "Check logs: kubectl logs checkout-api -n default" not in result.suggested_actions
 
 
 class TestGraphCommand:

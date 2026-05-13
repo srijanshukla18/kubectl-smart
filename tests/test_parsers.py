@@ -261,6 +261,45 @@ class TestKubernetesResourceParser:
         resources = parser.feed(blob)
         assert resources[0].status == "Available"
 
+    def test_extract_statefulset_unavailable_status(self):
+        """Test StatefulSet readiness counters drive availability status."""
+        parser = KubernetesResourceParser()
+        blob = RawBlob(
+            data={
+                "kind": "StatefulSet",
+                "metadata": {
+                    "name": "checkout",
+                    "namespace": "default",
+                    "uid": "sts-uid",
+                },
+                "spec": {"replicas": 1},
+                "status": {"replicas": 1, "readyReplicas": 0},
+            },
+            source="kubectl_get",
+            content_type="application/json",
+        )
+        resources = parser.feed(blob)
+        assert resources[0].status == "Unavailable"
+
+    def test_extract_daemonset_available_status(self):
+        """Test DaemonSet readiness counters drive availability status."""
+        parser = KubernetesResourceParser()
+        blob = RawBlob(
+            data={
+                "kind": "DaemonSet",
+                "metadata": {
+                    "name": "node-agent",
+                    "namespace": "default",
+                    "uid": "ds-uid",
+                },
+                "status": {"desiredNumberScheduled": 3, "numberAvailable": 3},
+            },
+            source="kubectl_get",
+            content_type="application/json",
+        )
+        resources = parser.feed(blob)
+        assert resources[0].status == "Available"
+
     def test_extract_pvc_status(self, sample_pvc_json):
         """Test PVC status extraction"""
         parser = KubernetesResourceParser()

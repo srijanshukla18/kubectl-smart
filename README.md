@@ -44,6 +44,10 @@ Supported resource types: `pod`, `deploy`/`deployment`, `sts`/`statefulset`, `jo
 
 Output and modes:
 - Text output is the default; `-o json` is available for automation.
+- Controller diagnosis follows bounded child context: Deployments through owned
+  ReplicaSets to Pods, and StatefulSets/DaemonSets/ReplicaSets/Jobs to their
+  Pods. Child Pod status, Events, and recent logs can become the controller's
+  root cause when that is the strongest evidence.
 - `--watch` reruns diagnosis on an interval for a single resource and currently
   supports text output only. `--watch -o json` is rejected instead of emitting a
   misleading mixed contract.

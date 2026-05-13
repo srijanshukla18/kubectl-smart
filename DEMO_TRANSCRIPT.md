@@ -55,16 +55,17 @@ Say:
 Run:
 
 ```bash
-./kubectl-smart diag pod checkout-api-0 -n kubectl-smart-complex
+./kubectl-smart diag sts checkout-api -n kubectl-smart-complex
 ```
 
 Say:
 
-> `diag` starts with the object I care about and ranks the signals. Kubernetes is
-> reporting BackOff, but the tool promotes the more useful evidence: the
-> application logs show fatal startup errors and a panic. So instead of me
-> treating BackOff as the answer, the first screen tells me what failed inside the
-> container, and keeps the BackOff event as supporting context.
+> I do not even need to start at the exact pod. I can start at the owning
+> StatefulSet, and `diag` follows the ownership chain down to the child pod.
+> Kubernetes is reporting BackOff, but the tool promotes the more useful
+> evidence: the application logs show fatal startup errors and a panic. So
+> instead of me treating BackOff as the answer, the first screen tells me what
+> failed inside the container, and keeps the BackOff event as supporting context.
 
 Run:
 
