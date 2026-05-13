@@ -969,6 +969,53 @@ class TestTopCommand:
     @pytest.mark.asyncio
     @patch("kubectl_smart.cli.commands.collector_registry")
     @patch("kubectl_smart.cli.commands.parser_registry")
+    async def test_execute_missing_namespace_returns_error(
+        self, mock_parser_registry, mock_collector_registry
+    ):
+        """Test top fails when the target namespace itself is missing."""
+        namespace_gap = RawBlob(
+            data={},
+            source="kubectl_get",
+            content_type="application/json",
+            metadata={
+                "data_gap": True,
+                "collector": "kubectl_get",
+                "operation": "get",
+                "resource_type": "namespace",
+                "category": "not_found",
+                "error": 'namespaces "missing" not found',
+            },
+        )
+
+        def create_collector(name, **kwargs):
+            collector = MagicMock()
+            collector.name = f"{name}_{kwargs.get('resource_type', 'generic')}"
+            if name == "get" and kwargs.get("resource_type") == "namespace":
+                collector.collect = AsyncMock(return_value=namespace_gap)
+            else:
+                collector.collect = AsyncMock(
+                    return_value=RawBlob(data={}, source=collector.name)
+                )
+            return collector
+
+        mock_collector_registry.create.side_effect = create_collector
+        mock_parser_registry.parse.return_value = []
+
+        cmd = TopCommand()
+        subject = SubjectCtx(
+            kind=ResourceKind.NAMESPACE, name="missing", namespace="missing"
+        )
+        result = await cmd.execute(subject)
+
+        assert result.exit_code == 2
+        assert "Namespace missing not found" in result.output
+        assert "DATA GAPS" in result.output
+        assert 'namespaces "missing" not found' in result.output
+        assert "PREDICTIVE OUTLOOK" not in result.output
+
+    @pytest.mark.asyncio
+    @patch("kubectl_smart.cli.commands.collector_registry")
+    @patch("kubectl_smart.cli.commands.parser_registry")
     async def test_execute_with_warnings(
         self, mock_parser_registry, mock_collector_registry
     ):

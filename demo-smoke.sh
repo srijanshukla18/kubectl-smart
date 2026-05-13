@@ -182,6 +182,12 @@ assert_contains "$top_outlook" "CERTIFICATE WARNINGS" "top certificate warning"
 assert_contains "$top_outlook" "DATA GAPS (1)" "top data-gap count"
 assert_contains "$top_outlook" "metrics pods unavailable" "top metrics data gap"
 
+log "Checking top fails closed when the namespace is missing..."
+missing_top="$(capture missing_top "${KUBECTL_SMART_CMD[@]}" top kubectl-smart-definitely-missing --context "$KUBECTL_SMART_CONTEXT" --timeout 2)"
+assert_status missing_top 2
+assert_contains "$missing_top" "Namespace kubectl-smart-definitely-missing not found" "missing namespace top error"
+assert_contains "$missing_top" "get namespace unavailable (not_found)" "missing namespace top evidence"
+
 log "Checking admin batch diagnosis reports namespace-scale data gaps..."
 batch_diag="$(capture batch_diag "${KUBECTL_SMART_CMD[@]}" diag pod --all -n "$NAMESPACE" --max-concurrent 1 --context "$KUBECTL_SMART_CONTEXT")"
 assert_status batch_diag 2

@@ -1131,6 +1131,13 @@ class TopCommand(BaseCommand):
         self.forecasting_engine = ForecastingEngine(
             forecast_horizon_hours=forecast_horizon_hours
         )
+
+    def _subject_not_found(self, subject: SubjectCtx) -> bool:
+        resource_type = subject.kind.value.lower()
+        return any(
+            gap.startswith(f"get {resource_type} unavailable (not_found)")
+            for gap in self.data_gaps
+        )
     
     async def execute(self, subject: SubjectCtx) -> CommandResult:
         """Execute top command"""
@@ -1141,6 +1148,18 @@ class TopCommand(BaseCommand):
             # Collect data for namespace analysis
             collector_names = ['get', 'metrics', 'kubelet']
             all_resources = await self._collect_data(subject, collector_names)
+            if self._subject_not_found(subject):
+                analysis_duration = time.time() - start_time
+                renderer = TerminalRenderer(colors_enabled=self.config.colors_enabled)
+                output = renderer.render_error(
+                    f"Namespace {subject.name} not found",
+                    data_gaps=self.data_gaps,
+                )
+                return CommandResult(
+                    output=output,
+                    exit_code=2,
+                    analysis_duration=analysis_duration,
+                )
 
             # Additional targeted gets for resources needed by forecasting
             # Secrets (for TLS), Ingress (TLS references), PVC/PV (storage mapping)

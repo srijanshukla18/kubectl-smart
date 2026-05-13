@@ -105,6 +105,8 @@ Data sources and behavior:
   check is suppressed and the output shows a data gap instead.
 - Read-only; no cluster writes. If a source is unavailable, `top` succeeds,
   prints `DATA GAPS`, and avoids unsupported warnings from missing signals.
+- A missing target namespace is treated as a command failure (`exit 2`) with
+  the exact `kubectl get namespace` not-found evidence shown in `DATA GAPS`.
 
 Requirements and graceful degradation:
 - For full predictions, ensure metrics-server is installed and kubelet metrics accessible via API proxy.
