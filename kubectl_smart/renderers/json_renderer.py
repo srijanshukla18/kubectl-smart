@@ -174,6 +174,9 @@ class JsonRenderer:
                     "issue_count": len(r.diagnostic_issues),
                     "critical_count": len(r.critical_issues),
                     "warning_count": len(r.warning_issues),
+                    "diagnostic_issues": [
+                        self._serialize_issue(i) for i in r.diagnostic_issues
+                    ],
                     "suggested_actions": r.suggested_actions,
                     "data_gaps": r.data_gaps,
                     "data_gap_count": len(r.data_gaps),

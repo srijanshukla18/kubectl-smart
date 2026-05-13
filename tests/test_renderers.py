@@ -729,6 +729,9 @@ class TestJsonRenderer:
         assert '"critical": 0' in output
         assert '"warning": 1' in output
         assert '"warning_count": 1' in output
+        parsed = json.loads(output)
+        assert len(parsed["results"][0]["diagnostic_issues"]) == 1
+        assert parsed["results"][0]["diagnostic_issues"][0]["title"] == issue.title
         assert '"exit_code": 1' in output
 
     def test_render_diagnosis_uses_warning_exit_code(
