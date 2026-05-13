@@ -127,6 +127,39 @@ class TestDiagCommand:
         result = runner.invoke(app, ["diag", "invalid", "test"])
         assert result.exit_code != 0
 
+    def test_diag_json_missing_name_error_stays_json(self):
+        """Test early JSON diag validation errors stay JSON."""
+        result = runner.invoke(app, ["diag", "pod", "-o", "json"])
+
+        assert result.exit_code == 2
+        assert '"type": "error"' in result.stdout
+        assert '"exit_code": 2' in result.stdout
+        assert "Either resource name or --all flag must be provided" in result.stdout
+
+    def test_diag_json_invalid_max_concurrent_error_stays_json(self):
+        """Test JSON batch option validation errors stay JSON."""
+        result = runner.invoke(
+            app,
+            ["diag", "pod", "--all", "-o", "json", "--max-concurrent", "0"],
+        )
+
+        assert result.exit_code == 2
+        assert '"type": "error"' in result.stdout
+        assert '"exit_code": 2' in result.stdout
+        assert "--max-concurrent must be >= 1" in result.stdout
+
+    def test_diag_json_invalid_namespace_error_stays_json(self):
+        """Test JSON Kubernetes name validation errors stay JSON."""
+        result = runner.invoke(
+            app,
+            ["diag", "pod", "api", "-n", "Not_Valid", "-o", "json"],
+        )
+
+        assert result.exit_code == 2
+        assert '"type": "error"' in result.stdout
+        assert '"exit_code": 2' in result.stdout
+        assert "Namespace must match DNS-1123" in result.stdout
+
     @patch("kubectl_smart.cli.commands.DiagCommand.execute_raw")
     def test_diag_json_error_stays_json(self, mock_execute_raw):
         """Test JSON diag emits machine-readable errors."""

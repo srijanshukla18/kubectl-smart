@@ -111,6 +111,16 @@ def _resolve_context(context: Optional[str]) -> Optional[str]:
     return os.getenv("KUBECTL_SMART_CONTEXT") or None
 
 
+def _echo_command_error(message: str, output: str = "text") -> None:
+    """Render command-level errors in the requested output format."""
+    if output == "json":
+        from ..renderers.json_renderer import JsonRenderer
+
+        typer.echo(JsonRenderer(pretty=True).render_error(message))
+    else:
+        typer.echo(f"Error: {message}", err=True)
+
+
 
 def version_callback(value: bool):
     """Show version and exit"""
@@ -182,27 +192,31 @@ def diag(
       kubectl-smart diag pod --all -n production --max-concurrent 2
     """
     # Validate inputs
-    if not name and not all_resources:
-        typer.echo("Error: Either resource name or --all flag must be provided", err=True)
-        raise typer.Exit(2)
-    if name and all_resources:
-        typer.echo("Error: Cannot use both resource name and --all flag", err=True)
-        raise typer.Exit(2)
     if output not in ('text', 'json'):
         typer.echo(f"Error: Invalid output format '{output}'. Valid options: text, json", err=True)
         raise typer.Exit(2)
+    if not name and not all_resources:
+        _echo_command_error("Either resource name or --all flag must be provided", output)
+        raise typer.Exit(2)
+    if name and all_resources:
+        _echo_command_error("Cannot use both resource name and --all flag", output)
+        raise typer.Exit(2)
     if interval < 1:
-        typer.echo("Error: Watch interval must be >= 1 second", err=True)
+        _echo_command_error("Watch interval must be >= 1 second", output)
         raise typer.Exit(2)
     if max_concurrent < 1:
-        typer.echo("Error: --max-concurrent must be >= 1", err=True)
+        _echo_command_error("--max-concurrent must be >= 1", output)
         raise typer.Exit(2)
 
-    if name is not None:
-        _validate_resource_name(name)  # type: ignore[arg-type]
-    _validate_namespace(namespace)
-    context = _resolve_context(context)
-    _validate_context(context)
+    try:
+        if name is not None:
+            _validate_resource_name(name)  # type: ignore[arg-type]
+        _validate_namespace(namespace)
+        context = _resolve_context(context)
+        _validate_context(context)
+    except typer.BadParameter as e:
+        _echo_command_error(str(e), output)
+        raise typer.Exit(2)
 
     # Lazy import models
     from ..models import ResourceKind, SubjectCtx
@@ -310,12 +324,7 @@ def diag(
         except typer.Exit:
             raise
         except Exception as e:
-            if output == "json":
-                from ..renderers.json_renderer import JsonRenderer
-
-                typer.echo(JsonRenderer(pretty=True).render_error(str(e)))
-            else:
-                typer.echo(f"Error: {e}", err=True)
+            _echo_command_error(str(e), output)
             raise typer.Exit(2)
 
     # Single resource mode
@@ -374,12 +383,7 @@ def diag(
         import os
         if os.getenv('KUBECTL_SMART_DEBUG'):
             typer.echo(f"Debug: Exception caught: {e}", err=True)
-        if output == "json":
-            from ..renderers.json_renderer import JsonRenderer
-            renderer = JsonRenderer(pretty=True)
-            typer.echo(renderer.render_error(str(e)))
-        else:
-            typer.echo(f"Error: {e}", err=True)
+        _echo_command_error(str(e), output)
         raise typer.Exit(2)
 
 
