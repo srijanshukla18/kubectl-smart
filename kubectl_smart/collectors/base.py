@@ -493,6 +493,7 @@ class KubeletMetricsScrape(Collector):
             items = nodes_json.get('items', []) if isinstance(nodes_json, dict) else []
 
             combined = []
+            scrape_errors = []
             for item in items:
                 node_name = item.get('metadata', {}).get('name')
                 if not node_name:
@@ -504,13 +505,25 @@ class KubeletMetricsScrape(Collector):
                     raw_text = data.get('raw', '') if isinstance(data, dict) else ''
                     if raw_text:
                         combined.append(f"# node={node_name}\n" + raw_text)
-                except RBACError:
-                    # Skip quietly when forbidden
-                    continue
+                except RBACError as e:
+                    scrape_errors.append((node_name, e))
                 except Exception as e:
+                    scrape_errors.append((node_name, e))
                     logger.info("Failed to scrape kubelet metrics for node", node=node_name, error=str(e))
 
-            return self._create_blob("\n".join(combined), "text/plain")
+            raw_metrics = "\n".join(combined)
+            if scrape_errors:
+                first_node, first_error = scrape_errors[0]
+                return self._create_failure_blob(
+                    raw_metrics,
+                    "text/plain",
+                    first_error,
+                    subject,
+                    operation="kubelet",
+                    resource_type=f"nodes/{first_node}/proxy",
+                )
+
+            return self._create_blob(raw_metrics, "text/plain")
 
         except Exception as e:
             logger.info("Kubelet metrics scrape unavailable", error=str(e))

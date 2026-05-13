@@ -383,6 +383,54 @@ class TestKubeletMetricsScrape:
 
         assert blob.content_type == "text/plain"
 
+    @pytest.mark.asyncio
+    async def test_kubelet_metrics_records_node_proxy_rbac_gap(self, monkeypatch):
+        """Test per-node kubelet RBAC failures are not silent successes."""
+        collector = KubeletMetricsScrape()
+
+        async def fake_run_kubectl(args, subject, output_format="json"):
+            if args == ["get", "nodes"]:
+                return {"items": [{"metadata": {"name": "node-a"}}]}
+            raise RBACError("RBAC permission denied: cannot get nodes/proxy")
+
+        monkeypatch.setattr(collector, "_run_kubectl", fake_run_kubectl)
+
+        subject = SubjectCtx(kind=ResourceKind.NAMESPACE, name="default")
+        blob = await collector.collect(subject)
+
+        assert blob.content_type == "text/plain"
+        assert blob.metadata["data_gap"] is True
+        assert blob.metadata["operation"] == "kubelet"
+        assert blob.metadata["resource_type"] == "nodes/node-a/proxy"
+        assert "nodes/proxy" in blob.metadata["suggested_action"]
+
+    @pytest.mark.asyncio
+    async def test_kubelet_metrics_preserves_partial_metrics_with_gap(self, monkeypatch):
+        """Test successful node metrics survive alongside another node's gap."""
+        collector = KubeletMetricsScrape()
+
+        async def fake_run_kubectl(args, subject, output_format="json"):
+            if args == ["get", "nodes"]:
+                return {
+                    "items": [
+                        {"metadata": {"name": "node-a"}},
+                        {"metadata": {"name": "node-b"}},
+                    ]
+                }
+            if args == ["get", "--raw", "/api/v1/nodes/node-a/proxy/metrics"]:
+                return {"raw": "kubelet_volume_stats_used_bytes 1"}
+            raise RBACError("RBAC permission denied: cannot get nodes/proxy")
+
+        monkeypatch.setattr(collector, "_run_kubectl", fake_run_kubectl)
+
+        subject = SubjectCtx(kind=ResourceKind.NAMESPACE, name="default")
+        blob = await collector.collect(subject)
+
+        assert "node=node-a" in blob.data
+        assert "kubelet_volume_stats_used_bytes 1" in blob.data
+        assert blob.metadata["data_gap"] is True
+        assert blob.metadata["resource_type"] == "nodes/node-b/proxy"
+
 
 class TestCollectorRegistry:
     """Tests for CollectorRegistry"""
