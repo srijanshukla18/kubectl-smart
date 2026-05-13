@@ -623,6 +623,32 @@ class TestJsonRenderer:
         assert '"data_gap_count": 1' in output
         assert '"analysis_complete": false' in output
 
+    def test_render_graph_includes_data_gap_summary(self, sample_subject_ctx):
+        """Test JSON graph exposes machine-readable completeness."""
+        result = GraphResult(
+            subject=sample_subject_ctx,
+            data_gaps=["get secrets unavailable (rbac): forbidden"],
+            analysis_duration=1.0,
+        )
+
+        output = JsonRenderer().render_graph(result)
+
+        assert '"data_gap_count": 1' in output
+        assert '"analysis_complete": false' in output
+
+    def test_render_top_includes_data_gap_summary(self, sample_subject_ctx):
+        """Test JSON top exposes machine-readable completeness."""
+        result = TopResult(
+            subject=sample_subject_ctx,
+            data_gaps=["metrics pods unavailable (rbac): forbidden"],
+            analysis_duration=1.0,
+        )
+
+        output = JsonRenderer().render_top(result)
+
+        assert '"data_gap_count": 1' in output
+        assert '"analysis_complete": false' in output
+
     def test_render_batch_includes_data_gaps(
         self, sample_subject_ctx, sample_resource_record
     ):

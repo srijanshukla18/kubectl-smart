@@ -96,6 +96,8 @@ class JsonRenderer:
             },
             "ascii_graph": result.ascii_graph,
             "data_gaps": result.data_gaps,
+            "data_gap_count": len(result.data_gaps),
+            "analysis_complete": not result.data_gaps,
             "analysis_duration_seconds": result.analysis_duration,
             "timestamp": result.timestamp.isoformat(),
         }
@@ -120,6 +122,8 @@ class JsonRenderer:
                 "total": len(result.capacity_warnings) + len(result.certificate_warnings),
             },
             "data_gaps": result.data_gaps,
+            "data_gap_count": len(result.data_gaps),
+            "analysis_complete": not result.data_gaps,
             "analysis_duration_seconds": result.analysis_duration,
             "timestamp": result.timestamp.isoformat(),
         }
