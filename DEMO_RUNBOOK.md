@@ -61,6 +61,8 @@ Expected behavior:
 - `kubectl logs` returns a Forbidden error for `pods/log`.
 - `kubectl-smart diag` still reports the pod status evidence, but includes
   `DATA GAPS` entries for both events and logs with the exact RBAC errors.
+- Because only warning-level status evidence is available in this restricted
+  view, that diagnosis exits `1` instead of overstating the case as critical.
 
 ## Cleanup
 

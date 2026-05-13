@@ -184,7 +184,8 @@ Say:
 > One design choice I care about is not pretending. This kubeconfig can read the
 > pod, but it cannot read Events or pod logs. So `kubectl-smart` still gives me
 > the diagnosis it can support from pod status, and then it shows those missing
-> collectors under `DATA GAPS` with the exact RBAC errors. That is the behavior I
+> collectors under `DATA GAPS` with the exact RBAC errors. Notice it does not
+> upgrade that limited evidence into a critical claim. That is the behavior I
 > want in real incidents: useful, but honest about what it could not see.
 
 ## Shorter 60-Second Version
