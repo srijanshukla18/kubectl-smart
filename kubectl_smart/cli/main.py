@@ -492,7 +492,7 @@ def graph(
 def top(
     namespace: Annotated[str, typer.Argument(help="Namespace to analyze")],
     context: Annotated[Optional[str], typer.Option("--context", help="kubectl context")] = None,
-    horizon: Annotated[int, typer.Option("--horizon", "-h", help="Forecast horizon in hours", min=1, max=168)] = 48,
+    horizon: Annotated[int, typer.Option("--horizon", "-H", help="Forecast horizon in hours", min=1, max=168)] = 48,
 ):
     """
     📈 Predictive capacity & certificate outlook

@@ -502,6 +502,13 @@ class TestTopCommand:
         assert result.exit_code == 0
         assert "Predictive" in result.stdout
 
+    def test_top_short_help(self):
+        """Test top -h remains help, not horizon."""
+        result = runner.invoke(app, ["top", "-h"])
+        assert result.exit_code == 0
+        assert "Predictive" in result.stdout
+        assert "Usage:" in result.stdout
+
     @patch("kubectl_smart.cli.commands.TopCommand.execute")
     def test_top_basic(self, mock_execute):
         """Test basic top command execution"""
@@ -520,6 +527,17 @@ class TestTopCommand:
 
         mock_execute.return_value = CommandResult(output="Output", exit_code=0)
         result = runner.invoke(app, ["top", "production", "--horizon", "24"])
+
+        assert result.exit_code == 0
+        assert mock_execute.await_count == 1
+
+    @patch("kubectl_smart.cli.commands.TopCommand.execute")
+    def test_top_with_short_horizon(self, mock_execute):
+        """Test top command with custom horizon short flag."""
+        from kubectl_smart.cli.commands import CommandResult
+
+        mock_execute.return_value = CommandResult(output="Output", exit_code=0)
+        result = runner.invoke(app, ["top", "production", "-H", "24"])
 
         assert result.exit_code == 0
         assert mock_execute.await_count == 1
