@@ -640,6 +640,30 @@ class TestAnalysisConfig:
             config = AnalysisConfig()
             assert config.collector_timeout == 20.0
 
+    def test_analysis_config_rejects_non_positive_timeout(self):
+        """Test explicit collector timeout must be positive."""
+        with pytest.raises(ValidationError):
+            AnalysisConfig(collector_timeout=0)
+
+        with pytest.raises(ValidationError):
+            AnalysisConfig(collector_timeout=-1)
+
+    def test_analysis_config_ignores_non_positive_env_timeout(self):
+        """Test invalid env timeout values cannot poison collectors."""
+        with patch.dict(os.environ, {"KUBECTL_SMART_TIMEOUT": "-1"}):
+            config = AnalysisConfig()
+            assert config.collector_timeout == 10.0
+
+        with patch.dict(os.environ, {"KUBECTL_SMART_TIMEOUT": "0"}):
+            config = AnalysisConfig()
+            assert config.collector_timeout == 10.0
+
+    def test_analysis_config_ignores_negative_env_cache_ttl(self):
+        """Test invalid env cache TTL values keep the default."""
+        with patch.dict(os.environ, {"KUBECTL_SMART_CACHE_TTL": "-1"}):
+            config = AnalysisConfig()
+            assert config.cache_ttl_seconds == 300
+
     def test_analysis_config_env_invalid_values(self):
         """Test AnalysisConfig handles invalid env var values gracefully"""
         with patch.dict(

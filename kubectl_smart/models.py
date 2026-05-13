@@ -293,9 +293,9 @@ class AnalysisConfig(BaseModel):
     """Configuration for analysis operations"""
     
     # Performance settings
-    max_concurrent_collectors: int = Field(default=5)
-    collector_timeout: float = Field(default=10.0)
-    cache_ttl_seconds: int = Field(default=300)  # 5 minutes
+    max_concurrent_collectors: int = Field(default=5, gt=0)
+    collector_timeout: float = Field(default=10.0, gt=0)
+    cache_ttl_seconds: int = Field(default=300, ge=0)  # 5 minutes
     
     # Scoring settings
     weights_file: Optional[str] = Field(default="weights.toml")
@@ -304,13 +304,13 @@ class AnalysisConfig(BaseModel):
     
     # Output settings
     colors_enabled: bool = Field(default=True)
-    max_display_issues: int = Field(default=10)
-    max_suggested_actions: int = Field(default=5)
+    max_display_issues: int = Field(default=10, gt=0)
+    max_suggested_actions: int = Field(default=5, gt=0)
     
     # Forecasting settings
-    forecast_horizon_hours: int = Field(default=48)
-    min_samples_for_forecast: int = Field(default=7)
-    cert_warning_days: int = Field(default=14)
+    forecast_horizon_hours: int = Field(default=48, gt=0)
+    min_samples_for_forecast: int = Field(default=7, gt=0)
+    cert_warning_days: int = Field(default=14, ge=0)
     
     def __init__(self, **data):
         super().__init__(**data)
@@ -323,13 +323,17 @@ class AnalysisConfig(BaseModel):
             
         if 'KUBECTL_SMART_CACHE_TTL' in os.environ:
             try:
-                self.cache_ttl_seconds = int(os.environ['KUBECTL_SMART_CACHE_TTL'])
+                cache_ttl = int(os.environ['KUBECTL_SMART_CACHE_TTL'])
+                if cache_ttl >= 0:
+                    self.cache_ttl_seconds = cache_ttl
             except ValueError:
                 pass
                 
         if 'KUBECTL_SMART_TIMEOUT' in os.environ:
             try:
-                self.collector_timeout = float(os.environ['KUBECTL_SMART_TIMEOUT'])
+                timeout = float(os.environ['KUBECTL_SMART_TIMEOUT'])
+                if timeout > 0:
+                    self.collector_timeout = timeout
             except ValueError:
                 pass
 
