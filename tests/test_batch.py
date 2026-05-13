@@ -1,5 +1,8 @@
 """Tests for kubectl_smart/batch.py."""
 
+import subprocess
+from types import SimpleNamespace
+
 import pytest
 
 from kubectl_smart.batch import BatchAnalyzer
@@ -88,3 +91,76 @@ async def test_execute_diagnosis_uses_diag_raw_path(monkeypatch):
     assert result is expected
     assert result.data_gaps == ["events events unavailable (rbac): forbidden"]
     assert calls == {"execute": 0, "execute_raw": 1}
+
+
+@pytest.mark.asyncio
+async def test_get_resources_uses_configured_timeout(monkeypatch):
+    """Batch resource discovery should honor the configured kubectl timeout."""
+    captured = {}
+
+    async def fake_to_thread(func, cmd, **kwargs):
+        captured["cmd"] = cmd
+        captured["timeout"] = kwargs["timeout"]
+        return SimpleNamespace(returncode=0, stdout="pod-a pod-b", stderr="")
+
+    monkeypatch.setattr("kubectl_smart.batch.asyncio.to_thread", fake_to_thread)
+
+    analyzer = BatchAnalyzer(kubectl_timeout=2.5)
+    resources = await analyzer._get_resources(
+        ResourceKind.POD,
+        namespace="default",
+        context="kind-demo",
+        label_selector="app=checkout",
+    )
+
+    assert resources == ["pod-a", "pod-b"]
+    assert captured["timeout"] == 2.5
+    assert captured["cmd"] == [
+        "kubectl",
+        "get",
+        "pods",
+        "-o",
+        "jsonpath={.items[*].metadata.name}",
+        "-n",
+        "default",
+        "--context",
+        "kind-demo",
+        "-l",
+        "app=checkout",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_diagnose_all_reports_resource_list_timeout(monkeypatch):
+    """Batch mode should not call a list timeout 'no resources found'."""
+
+    async def fake_to_thread(func, cmd, **kwargs):
+        raise subprocess.TimeoutExpired(cmd=cmd, timeout=kwargs["timeout"])
+
+    monkeypatch.setattr("kubectl_smart.batch.asyncio.to_thread", fake_to_thread)
+
+    result = await BatchAnalyzer(kubectl_timeout=0.1).diagnose_all(
+        ResourceKind.POD,
+        namespace="default",
+    )
+
+    assert result.total_resources == 0
+    assert result.successful == 0
+    assert result.failed == 1
+    assert result.errors == [{"message": "Timed out after 0.1s listing pods"}]
+
+
+@pytest.mark.asyncio
+async def test_diagnose_all_reports_resource_list_failure(monkeypatch):
+    """Batch mode should surface kubectl list failures as errors."""
+
+    async def fake_to_thread(func, cmd, **kwargs):
+        return SimpleNamespace(returncode=1, stdout="", stderr="forbidden")
+
+    monkeypatch.setattr("kubectl_smart.batch.asyncio.to_thread", fake_to_thread)
+
+    result = await BatchAnalyzer().diagnose_all(ResourceKind.POD, namespace="default")
+
+    assert result.total_resources == 0
+    assert result.failed == 1
+    assert result.errors == [{"message": "Failed to list pods: forbidden"}]

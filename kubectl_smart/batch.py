@@ -36,14 +36,19 @@ class BatchResult:
 class BatchAnalyzer:
     """Batch analyzer for processing multiple resources concurrently"""
 
-    def __init__(self, max_concurrent: int = 5):
+    def __init__(self, max_concurrent: int = 5, kubectl_timeout: Optional[float] = None):
         """Initialize batch analyzer
 
         Args:
             max_concurrent: Maximum number of concurrent diagnoses
+            kubectl_timeout: Timeout for the initial kubectl resource list
         """
+        from .models import AnalysisConfig
+
         self.max_concurrent = max_concurrent
+        self.kubectl_timeout = kubectl_timeout or AnalysisConfig().collector_timeout
         self.semaphore = asyncio.Semaphore(max_concurrent)
+        self._resource_list_error: Optional[str] = None
 
     async def diagnose_all(
         self,
@@ -69,12 +74,13 @@ class BatchAnalyzer:
         resources = await self._get_resources(kind, namespace, context, label_selector)
 
         if not resources:
+            error = self._resource_list_error or f"No {kind.value}s found"
             return BatchResult(
                 total_resources=0,
                 successful=0,
-                failed=0,
+                failed=1 if self._resource_list_error else 0,
                 results=[],
-                errors=[{"message": f"No {kind.value}s found"}],
+                errors=[{"message": error}],
                 duration=time.time() - start_time,
             )
 
@@ -120,6 +126,8 @@ class BatchAnalyzer:
         label_selector: Optional[str],
     ) -> list[str]:
         """Get list of resource names"""
+        self._resource_list_error = None
+
         # Map ResourceKind to kubectl resource type
         kind_to_kubectl = {
             ResourceKind.POD: "pods",
@@ -148,21 +156,27 @@ class BatchAnalyzer:
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=30
+                timeout=self.kubectl_timeout,
             )
 
             if result.returncode != 0:
-                logger.warning(f"kubectl get failed: {result.stderr}")
+                error = result.stderr.strip() or "kubectl get failed"
+                self._resource_list_error = f"Failed to list {resource_type}: {error}"
+                logger.warning(self._resource_list_error)
                 return []
 
             names = result.stdout.strip().split()
             return [n for n in names if n]  # Filter empty strings
 
         except subprocess.TimeoutExpired:
-            logger.error("kubectl get timed out")
+            self._resource_list_error = (
+                f"Timed out after {self.kubectl_timeout}s listing {resource_type}"
+            )
+            logger.error(self._resource_list_error)
             return []
         except Exception as e:
-            logger.error(f"Failed to get resources: {e}")
+            self._resource_list_error = f"Failed to list {resource_type}: {e}"
+            logger.error(self._resource_list_error)
             return []
 
     async def _diagnose_resource(
