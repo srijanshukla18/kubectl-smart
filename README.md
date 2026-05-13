@@ -14,6 +14,9 @@
 # One-command installation using uv
 ./install.sh
 
+# Or run directly from the checkout
+./kubectl-smart --help
+
 # Now kubectl-smart is available globally in your terminal
 kubectl-smart --help
 kubectl-smart diag pod failing-pod              # Root-cause analysis
@@ -204,7 +207,7 @@ kubectl-smart --version
 Local demo safety:
 - `kubectl-smart-lab.sh`, `test-setup-minikube.sh`, and `test.sh` refuse to run unless `KUBECTL_SMART_CONTEXT` matches a local context pattern: `kind-*`, `minikube`, or `colima`.
 - The CLI also honors `KUBECTL_SMART_CONTEXT` when `--context` is omitted, which keeps demo commands pinned even if another terminal changes the global kubectl context.
-- `demo-smoke.sh` defaults to the current checkout via `uv run --frozen ./kubectl-smart`.
+- `demo-smoke.sh` defaults to the current checkout via `./kubectl-smart`.
   Set `KUBECTL_SMART_CMD=kubectl-smart` when you specifically want to validate an installed binary.
 - `demo-smoke.sh` passes explicit contexts for both the admin demo context and
   the restricted RBAC kubeconfig, so an exported shell context cannot bleed

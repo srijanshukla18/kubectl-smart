@@ -5,7 +5,7 @@ NAMESPACE="${NAMESPACE:-kubectl-smart-complex}"
 RBAC_KUBECONFIG="${RBAC_KUBECONFIG:-.kubectl-smart-rbac.kubeconfig}"
 RBAC_CONTEXT="${RBAC_CONTEXT:-kubectl-smart-rbac-demo}"
 KUBECTL_SMART_CONTEXT="${KUBECTL_SMART_CONTEXT:-$(kubectl config current-context 2>/dev/null || true)}"
-KUBECTL_SMART_CMD_STRING="${KUBECTL_SMART_CMD:-uv run --frozen ./kubectl-smart}"
+KUBECTL_SMART_CMD_STRING="${KUBECTL_SMART_CMD:-./kubectl-smart}"
 SAFE_CONTEXT_PATTERN="${KUBECTL_SMART_SAFE_CONTEXT_PATTERN:-^(kind-|minikube$|colima$)}"
 KUBECTL_SMART_CMD=()
 read -r -a KUBECTL_SMART_CMD <<< "$KUBECTL_SMART_CMD_STRING"

@@ -1,30 +1,16 @@
-#!/usr/bin/env python3
-"""
-kubectl-smart: Intelligent kubectl plugin for Kubernetes debugging
+#!/usr/bin/env bash
+set -euo pipefail
 
-Production-ready modular implementation featuring the bare-bones power trio:
-- diag: root-cause analysis of workloads
-- graph: dependency visualization with ASCII trees
-- top: predictive capacity and certificate outlook
-"""
+if ! command -v uv >/dev/null 2>&1; then
+  echo "Error: uv is required to run kubectl-smart from a checkout." >&2
+  echo "" >&2
+  echo "Install uv, then retry:" >&2
+  echo "  curl -fsSL https://astral.sh/uv/install.sh | sh" >&2
+  echo "  ./kubectl-smart --help" >&2
+  echo "" >&2
+  echo "Or install the current checkout globally:" >&2
+  echo "  ./install.sh" >&2
+  exit 1
+fi
 
-import sys
-
-def main():
-    """Main entry point for kubectl-smart"""
-    try:
-        from kubectl_smart.cli.main import app
-        app()
-    except ImportError as e:
-        print(f"Error: Failed to import kubectl-smart modules: {e}", file=sys.stderr)
-        print("\nRun through uv so the locked project dependencies are available:", file=sys.stderr)
-        print("  uv run --frozen ./kubectl-smart --help", file=sys.stderr)
-        print("\nOr install the current checkout globally:", file=sys.stderr)
-        print("  ./install.sh", file=sys.stderr)
-        sys.exit(1)
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
-
-if __name__ == "__main__":
-    main()
+exec uv run --frozen python -c 'import sys; sys.argv[0] = "kubectl-smart"; from kubectl_smart.cli.main import app; app()' "$@"
