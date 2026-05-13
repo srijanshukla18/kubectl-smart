@@ -108,6 +108,15 @@ def _validate_context(context: Optional[str]) -> None:
         raise typer.BadParameter("Context must not contain control characters.")
 
 
+def _validate_label_selector(label_selector: Optional[str]) -> None:
+    if label_selector is None:
+        return
+    if not label_selector.strip():
+        raise typer.BadParameter("Label selector must not be empty.")
+    if any(ord(char) < 32 or ord(char) == 127 for char in label_selector):
+        raise typer.BadParameter("Label selector must not contain control characters.")
+
+
 def _resolve_context(context: Optional[str]) -> Optional[str]:
     """Use an explicit context, or a demo/test default from the environment."""
     if context:
@@ -187,6 +196,7 @@ def diag(
     watch: Annotated[bool, typer.Option("--watch", "-w", help="Watch for changes and re-run diagnosis")] = False,
     all_resources: Annotated[bool, typer.Option("--all", help="Diagnose all resources of this type")] = False,
     max_concurrent: Annotated[int, typer.Option("--max-concurrent", help="Max concurrent diagnoses for --all")] = 5,
+    label_selector: Annotated[Optional[str], typer.Option("--selector", "-l", help="Label selector for --all, e.g. app=api,tier=backend")] = None,
     interval: Annotated[int, typer.Option("--interval", help="Watch interval in seconds")] = 5,
 ):
     """
@@ -209,6 +219,7 @@ def diag(
       kubectl-smart diag pod failing-pod --watch        # Continuous monitoring
       kubectl-smart diag pod --all -n production        # Diagnose all pods
       kubectl-smart diag pod --all -n production --max-concurrent 2
+      kubectl-smart diag pod --all -n production -l app=checkout
     """
     # Validate inputs
     if output not in ('text', 'json'):
@@ -223,6 +234,9 @@ def diag(
     if name and all_resources:
         _echo_command_error("Cannot use both resource name and --all flag", output)
         raise typer.Exit(2)
+    if label_selector and not all_resources:
+        _echo_command_error("--selector can only be used with --all", output)
+        raise typer.Exit(2)
     if interval < 1:
         _echo_command_error("Watch interval must be >= 1 second", output)
         raise typer.Exit(2)
@@ -236,6 +250,7 @@ def diag(
         _validate_namespace(namespace)
         context = _resolve_context(context)
         _validate_context(context)
+        _validate_label_selector(label_selector)
     except typer.BadParameter as e:
         _echo_command_error(str(e), output)
         raise typer.Exit(2)
@@ -273,6 +288,7 @@ def diag(
                 kind=kind,
                 namespace=namespace,
                 context=context,
+                label_selector=label_selector,
             ))
             batch_exit_code = batch_result.exit_code
 

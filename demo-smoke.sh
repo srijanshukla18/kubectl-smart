@@ -125,6 +125,13 @@ assert_contains "$batch_diag" "Total: 3 | Analyzed: 3 | Failed: 0" "batch summar
 assert_contains "$batch_diag" "Data gaps:" "batch data-gap summary"
 assert_contains "$batch_diag" "Concurrency: 1" "batch concurrency summary"
 
+log "Checking label-selected batch diagnosis narrows namespace scope..."
+selector_batch="$(capture selector_batch "${KUBECTL_SMART_CMD[@]}" diag pod --all -n "$NAMESPACE" -l demo.kubectl-smart/story=checkout-cascade --context "$KUBECTL_SMART_CONTEXT")"
+assert_status selector_batch 2
+assert_contains "$selector_batch" "Total: 2 | Analyzed: 2 | Failed: 0" "label-selected batch summary"
+assert_contains "$selector_batch" "checkout-api-0:" "label-selected checkout pod"
+assert_contains "$selector_batch" "inventory-db-canary" "label-selected inventory pod"
+
 if [ ! -f "$RBAC_KUBECONFIG" ]; then
   refresh_restricted_kubeconfig
 fi

@@ -204,6 +204,31 @@ async def test_get_resources_rejects_invalid_context_without_kubectl(monkeypatch
     assert called is False
 
 
+@pytest.mark.asyncio
+async def test_get_resources_rejects_invalid_label_selector_without_kubectl(monkeypatch):
+    """Batch resource discovery should reject malformed label selectors early."""
+    called = False
+
+    async def fake_to_thread(*_args, **_kwargs):
+        nonlocal called
+        called = True
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr("kubectl_smart.batch.asyncio.to_thread", fake_to_thread)
+
+    analyzer = BatchAnalyzer()
+    resources = await analyzer._get_resources(
+        ResourceKind.POD,
+        namespace="default",
+        context=None,
+        label_selector="app=api\nteam=checkout",
+    )
+
+    assert resources == []
+    assert analyzer._resource_list_error == "Invalid label selector supplied"
+    assert called is False
+
+
 def test_kubectl_resource_type_uses_supported_plurals():
     """Supported resource labels should match kubectl plurals."""
     assert kubectl_resource_type(ResourceKind.POD) == "pods"

@@ -34,6 +34,12 @@ kubectl-smart graph ingress checkout-demo -n kubectl-smart-complex --upstream --
 kubectl-smart top kubectl-smart-complex --horizon 72
 ```
 
+For a narrower batch view while recording or debugging a large namespace:
+
+```bash
+kubectl-smart diag pod --all -n kubectl-smart-complex -l demo.kubectl-smart/story=checkout-cascade
+```
+
 ### Case 2: Fulfillment Config Trap
 
 This one shows a pod that is scheduled and has rich dependencies, but it cannot

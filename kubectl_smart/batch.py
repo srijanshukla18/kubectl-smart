@@ -170,6 +170,15 @@ class BatchAnalyzer:
             self._resource_list_error = "Invalid context supplied"
             logger.warning(self._resource_list_error)
             return []
+        if label_selector is not None:
+            if not label_selector.strip():
+                self._resource_list_error = "Invalid label selector supplied"
+                logger.warning(self._resource_list_error)
+                return []
+            if any(ord(char) < 32 or ord(char) == 127 for char in label_selector):
+                self._resource_list_error = "Invalid label selector supplied"
+                logger.warning(self._resource_list_error)
+                return []
 
         if namespace:
             cmd.extend(["-n", namespace])

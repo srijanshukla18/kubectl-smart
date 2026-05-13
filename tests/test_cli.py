@@ -376,6 +376,58 @@ class TestDiagCommand:
         assert "No Pods found" in result.stdout
         assert "Errors" not in result.stdout
 
+    @patch("kubectl_smart.batch.BatchAnalyzer")
+    def test_diag_all_passes_label_selector(self, mock_batch_analyzer):
+        """Test --selector narrows batch diagnosis resource discovery."""
+        from kubectl_smart.batch import BatchResult
+
+        analyzer = mock_batch_analyzer.return_value
+        analyzer.diagnose_all = AsyncMock(
+            return_value=BatchResult(
+                total_resources=0,
+                successful=0,
+                failed=0,
+                messages=[{"message": "No Pods found"}],
+                duration=0.1,
+            )
+        )
+
+        result = runner.invoke(
+            app,
+            [
+                "diag",
+                "pod",
+                "--all",
+                "-n",
+                "default",
+                "--selector",
+                "app=checkout,tier=api",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert analyzer.diagnose_all.await_args.kwargs["label_selector"] == "app=checkout,tier=api"
+
+    def test_diag_selector_requires_all(self):
+        """Test --selector is rejected for single-resource diagnosis."""
+        result = runner.invoke(
+            app,
+            ["diag", "pod", "api", "-n", "default", "-l", "app=checkout"],
+        )
+
+        assert result.exit_code == 2
+        assert "--selector can only be used with --all" in result.stderr
+
+    def test_diag_selector_rejects_control_characters(self):
+        """Test label selectors are validated before kubectl calls."""
+        result = runner.invoke(
+            app,
+            ["diag", "pod", "--all", "-n", "default", "-l", "app=checkout\nteam=api"],
+        )
+
+        assert result.exit_code == 2
+        assert "Label selector must not contain control characters" in result.stderr
+
     @patch("kubectl_smart.batch.BatchAnalyzer.diagnose_all")
     def test_diag_all_ingress_uses_kubectl_plural_header(self, mock_diagnose_all):
         """Test batch text output uses kubectl plurals for Ingress."""
