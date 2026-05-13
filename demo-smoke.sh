@@ -26,6 +26,19 @@ fail() {
   exit 1
 }
 
+refresh_restricted_kubeconfig() {
+  if [ ! -x ./demo-complex-scenarios.sh ]; then
+    fail "Cannot refresh restricted kubeconfig; missing executable ./demo-complex-scenarios.sh"
+  fi
+
+  log "Refreshing restricted kubeconfig token..."
+  env \
+    NAMESPACE="$NAMESPACE" \
+    KUBECTL_SMART_CONTEXT="$KUBECTL_SMART_CONTEXT" \
+    RBAC_KUBECONFIG="$RBAC_KUBECONFIG" \
+    ./demo-complex-scenarios.sh rbac >/dev/null
+}
+
 guard_context() {
   if [ -z "$KUBECTL_SMART_CONTEXT" ]; then
     fail "No Kubernetes context is selected"
@@ -105,11 +118,16 @@ assert_contains "$batch_diag" "Data gaps:" "batch data-gap summary"
 assert_contains "$batch_diag" "Concurrency: 1" "batch concurrency summary"
 
 if [ ! -f "$RBAC_KUBECONFIG" ]; then
-  fail "Missing restricted kubeconfig $RBAC_KUBECONFIG; run ./demo-complex-scenarios.sh apply"
+  refresh_restricted_kubeconfig
 fi
 
 log "Checking restricted kubeconfig permission envelope..."
 restricted_pods="$(capture restricted_pods env KUBECONFIG="$RBAC_KUBECONFIG" kubectl --context "$RBAC_CONTEXT" get pods -n "$NAMESPACE" --no-headers)"
+if [ "$(cat "${tmpdir}/restricted_pods.status")" != "0" ] && grep -Fq "Unauthorized" "$restricted_pods"; then
+  log "Restricted kubeconfig token is stale; refreshing it and retrying once..."
+  refresh_restricted_kubeconfig
+  restricted_pods="$(capture restricted_pods env KUBECONFIG="$RBAC_KUBECONFIG" kubectl --context "$RBAC_CONTEXT" get pods -n "$NAMESPACE" --no-headers)"
+fi
 assert_status restricted_pods 0
 assert_contains "$restricted_pods" "checkout-api-0" "restricted pod list"
 

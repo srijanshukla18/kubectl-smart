@@ -475,12 +475,17 @@ case "$ACTION" in
     apply_rbac_limited_viewer
     print_runbook
     ;;
+  rbac|refresh-rbac)
+    guard_context
+    ensure_namespace
+    apply_rbac_limited_viewer
+    ;;
   cleanup|destroy)
     guard_context
     kubectl delete ns "$NAMESPACE" --ignore-not-found
     ;;
   *)
-    echo "Usage: $0 [apply|cleanup]" >&2
+    echo "Usage: $0 [apply|rbac|cleanup]" >&2
     exit 1
     ;;
 esac
