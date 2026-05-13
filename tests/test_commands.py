@@ -752,6 +752,44 @@ class TestGraphCommand:
     @pytest.mark.asyncio
     @patch("kubectl_smart.cli.commands.collector_registry")
     @patch("kubectl_smart.cli.commands.parser_registry")
+    async def test_execute_resource_not_found_softens_target_inventory_gap(
+        self, mock_parser_registry, mock_collector_registry
+    ):
+        """Test graph avoids not-found overclaims when target inventory is blocked."""
+        gap_blob = RawBlob(
+            data={},
+            source="kubectl_get",
+            content_type="application/json",
+            metadata={
+                "data_gap": True,
+                "collector": "kubectl_get",
+                "operation": "get",
+                "resource_type": "pods",
+                "category": "rbac",
+                "error": "forbidden",
+            },
+        )
+        mock_collector = MagicMock()
+        mock_collector.name = "kubectl_get"
+        mock_collector.collect = AsyncMock(return_value=gap_blob)
+        mock_collector_registry.create.return_value = mock_collector
+        mock_parser_registry.parse.return_value = []
+
+        cmd = GraphCommand()
+        subject = SubjectCtx(
+            kind=ResourceKind.POD, name="missing-pod", namespace="default"
+        )
+        result = await cmd.execute(subject)
+
+        assert result.exit_code == 2
+        assert "not present in collected graph" in result.output
+        assert "not found in graph" not in result.output
+        assert "DATA GAPS" in result.output
+        assert "get pods unavailable (rbac): forbidden" in result.output
+
+    @pytest.mark.asyncio
+    @patch("kubectl_smart.cli.commands.collector_registry")
+    @patch("kubectl_smart.cli.commands.parser_registry")
     async def test_execute_success(
         self, mock_parser_registry, mock_collector_registry
     ):

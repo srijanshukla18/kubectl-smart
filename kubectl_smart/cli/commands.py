@@ -13,6 +13,7 @@ from typing import Dict, List, Optional
 
 import structlog
 
+from ..batch import kubectl_resource_type
 from ..collectors.base import registry as collector_registry
 from ..forecast.predictor import ForecastingEngine
 from ..graph.builder import GraphBuilder
@@ -959,6 +960,14 @@ class GraphCommand(BaseCommand):
     - Provides ASCII tree visualization with health indicators
     """
 
+    def _target_inventory_incomplete(self, subject: SubjectCtx) -> bool:
+        resource_type = kubectl_resource_type(subject.kind)
+        return any(
+            gap.startswith(f"get {resource_type} unavailable")
+            or gap.startswith(f"get {resource_type} collector unavailable")
+            for gap in self.data_gaps
+        )
+
     async def _collect_graph_data(self, subject: SubjectCtx) -> List[ResourceRecord]:
         """Collect the namespace resource set needed to build useful relationships."""
         namespace_resource_types = [
@@ -1044,8 +1053,13 @@ class GraphCommand(BaseCommand):
             if not target_uid:
                 analysis_duration = time.time() - start_time
                 renderer = TerminalRenderer(colors_enabled=self.config.colors_enabled)
+                message = f"Resource {subject.full_name} not found in graph"
+                if self._target_inventory_incomplete(subject):
+                    message = (
+                        f"Resource {subject.full_name} not present in collected graph"
+                    )
                 output = renderer.render_error(
-                    f"Resource {subject.full_name} not found in graph",
+                    message,
                     data_gaps=self.data_gaps,
                 )
                 
