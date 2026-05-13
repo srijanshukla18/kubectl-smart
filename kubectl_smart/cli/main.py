@@ -88,7 +88,9 @@ def _validate_context(context: Optional[str]) -> None:
 def version_callback(value: bool):
     """Show version and exit"""
     if value:
-        typer.echo("kubectl-smart v1.0.0")
+        from kubectl_smart import __version__
+
+        typer.echo(f"kubectl-smart v{__version__}")
         raise typer.Exit()
 
 
@@ -468,8 +470,8 @@ def describe(
     
 ):
     """Legacy describe command - use 'diag' instead"""
-    typer.echo("⚠️  'describe' is deprecated. Use 'kubectl-smart diag' instead.", err=True)
-    typer.echo(f"   Try: kubectl-smart diag {resource_type} {name}", err=True)
+    typer.echo("⚠️  'describe' is deprecated. Use 'kubectl-smart diag' instead.")
+    typer.echo(f"   Try: kubectl-smart diag {resource_type} {name}")
     raise typer.Exit(1)
 
 
@@ -480,8 +482,8 @@ def deps(
     namespace: Optional[str] = typer.Option(None, "--namespace", "-n"),
 ):
     """Legacy deps command - use 'graph' instead"""
-    typer.echo("⚠️  'deps' is deprecated. Use 'kubectl-smart graph' instead.", err=True)
-    typer.echo(f"   Try: kubectl-smart graph {resource_type} {name}", err=True)
+    typer.echo("⚠️  'deps' is deprecated. Use 'kubectl-smart graph' instead.")
+    typer.echo(f"   Try: kubectl-smart graph {resource_type} {name}")
     raise typer.Exit(1)
 
 
@@ -490,8 +492,8 @@ def events(
     namespace: Optional[str] = typer.Option(None, "--namespace", "-n"),
 ):
     """Legacy events command - use 'diag' or 'top' instead"""
-    typer.echo("⚠️  'events' is deprecated. Use 'kubectl-smart diag' or 'top' instead.", err=True)
-    typer.echo("   Try: kubectl-smart diag pod <name> or kubectl-smart top <namespace>", err=True)
+    typer.echo("⚠️  'events' is deprecated. Use 'kubectl-smart diag' or 'top' instead.")
+    typer.echo("   Try: kubectl-smart diag pod <name> or kubectl-smart top <namespace>")
     raise typer.Exit(1)
 
 

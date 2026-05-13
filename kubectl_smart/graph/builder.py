@@ -14,6 +14,8 @@ from ..models import ResourceKind, ResourceRecord
 
 logger = structlog.get_logger(__name__)
 
+DEPENDENCY_EDGE_TYPES = {"scheduled-on", "mounts", "uses", "binds-to", "selects", "depends"}
+
 
 class GraphBuilder:
     """Builds dependency graphs for Kubernetes resources using python-igraph
@@ -45,7 +47,7 @@ class GraphBuilder:
         if resource.uid in self.uid_to_vertex:
             return self.uid_to_vertex[resource.uid]
         
-        vertex_id = self.graph.add_vertex(
+        vertex = self.graph.add_vertex(
             uid=resource.uid,
             name=resource.name,
             kind=resource.kind.value,
@@ -53,6 +55,7 @@ class GraphBuilder:
             full_name=resource.full_name,
             status=resource.status,
         )
+        vertex_id = vertex.index
         
         self.resources[resource.uid] = resource
         self.uid_to_vertex[resource.uid] = vertex_id
@@ -294,15 +297,27 @@ class GraphBuilder:
             return []
         
         vertex_id = self.uid_to_vertex[resource_uid]
-        
-        if direction == "upstream":
-            # Get what this resource depends on
-            neighbor_ids = self.graph.predecessors(vertex_id)
-        else:
-            # Get what depends on this resource
-            neighbor_ids = self.graph.successors(vertex_id)
-        
-        return [self.vertex_to_uid[vid] for vid in neighbor_ids]
+        matches = []
+
+        for edge in self.graph.es:
+            edge_type = edge["type"] if "type" in edge.attributes() else ""
+            is_dependency_edge = edge_type in DEPENDENCY_EDGE_TYPES
+
+            if direction == "upstream":
+                # For dependency edges, source depends on target (Pod -> PVC).
+                # For ownership/selection edges, target is affected by source (Service -> Pod).
+                if is_dependency_edge and edge.source == vertex_id:
+                    matches.append(edge.target)
+                elif not is_dependency_edge and edge.target == vertex_id:
+                    matches.append(edge.source)
+            else:
+                # Downstream is the reverse: resources impacted by this resource.
+                if is_dependency_edge and edge.target == vertex_id:
+                    matches.append(edge.source)
+                elif not is_dependency_edge and edge.source == vertex_id:
+                    matches.append(edge.target)
+
+        return [self.vertex_to_uid[vid] for vid in matches]
     
     def to_ascii(self, root_uid: str, direction: str = "downstream", max_depth: int = 3) -> str:
         """Generate ASCII tree representation

@@ -46,17 +46,20 @@ class ScoringEngine:
     def _load_weights(self, weights_file: Optional[str] = None) -> Dict:
         """Load scoring weights from TOML file"""
         package_dir = Path(__file__).parent.parent.resolve()
+        explicit_weights_file = weights_file is not None
         if not weights_file:
             # Look for weights.toml in package directory
             weights_file = package_dir / "weights.toml"
         
         weights_path = Path(weights_file).resolve()
-        # Prevent path traversal / arbitrary file reads
-        try:
-            weights_path.relative_to(package_dir)
-        except Exception:
-            logger.warning("Weights file rejected: outside package directory", path=weights_path)
-            return self._get_default_weights()
+        # The default lookup is constrained to package data. If a caller passes an
+        # explicit path, treat that as intentional configuration.
+        if not explicit_weights_file:
+            try:
+                weights_path.relative_to(package_dir)
+            except Exception:
+                logger.warning("Weights file rejected: outside package directory", path=weights_path)
+                return self._get_default_weights()
         
         if not weights_path.exists():
             logger.warning("Weights file not found, using defaults", path=weights_path)

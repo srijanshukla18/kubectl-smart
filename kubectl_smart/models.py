@@ -46,6 +46,10 @@ class ResourceKind(str, Enum):
     EVENT = "Event"
     LOGANALYSIS = "LogAnalysis"
 
+    def __str__(self) -> str:
+        """Return the Kubernetes kind value when coerced to string."""
+        return self.value
+
 
 class IssueSeverity(str, Enum):
     """Issue severity levels as defined in the technical specification"""

@@ -9,6 +9,7 @@ from kubectl_smart.models import RawBlob, ResourceKind, ResourceRecord
 from kubectl_smart.parsers.base import (
     EventParser,
     KubernetesResourceParser,
+    LogParser,
     MetricsParser,
     Parser,
     ParserError,
@@ -568,12 +569,12 @@ class TestParserRegistry:
         parser = reg.get_parser(blob)
         assert isinstance(parser, PrometheusTextParser)
 
-    def test_get_parser_for_text(self):
-        """Test get_parser returns text parser for other text sources"""
+    def test_get_parser_for_logs(self):
+        """Test get_parser returns log parser for kubectl logs output"""
         reg = ParserRegistry()
         blob = RawBlob(data={}, source="kubectl_logs", content_type="text/plain")
         parser = reg.get_parser(blob)
-        assert isinstance(parser, TextParser)
+        assert isinstance(parser, LogParser)
 
     def test_get_parser_for_json(self):
         """Test get_parser returns kubernetes parser for JSON"""

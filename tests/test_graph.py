@@ -148,8 +148,8 @@ class TestGraphBuilderRelationships:
         )
         builder.add_resources([node, pod])
 
-        deps = builder.get_dependencies(pod.uid, "downstream")
-        # Node should be in downstream dependencies
+        deps = builder.get_dependencies(pod.uid, "upstream")
+        # Node should be in upstream dependencies
         assert node.uid in deps
 
     def test_extract_pod_pvc_relationship(self):
@@ -176,7 +176,7 @@ class TestGraphBuilderRelationships:
         )
         builder.add_resources([pvc, pod])
 
-        deps = builder.get_dependencies(pod.uid, "downstream")
+        deps = builder.get_dependencies(pod.uid, "upstream")
         assert pvc.uid in deps
 
     def test_extract_pod_configmap_relationship(self):
@@ -201,7 +201,7 @@ class TestGraphBuilderRelationships:
         )
         builder.add_resources([cm, pod])
 
-        deps = builder.get_dependencies(pod.uid, "downstream")
+        deps = builder.get_dependencies(pod.uid, "upstream")
         assert cm.uid in deps
 
     def test_extract_pod_secret_relationship(self):
@@ -226,7 +226,7 @@ class TestGraphBuilderRelationships:
         )
         builder.add_resources([secret, pod])
 
-        deps = builder.get_dependencies(pod.uid, "downstream")
+        deps = builder.get_dependencies(pod.uid, "upstream")
         assert secret.uid in deps
 
     def test_extract_pod_serviceaccount_relationship(self):
@@ -247,7 +247,7 @@ class TestGraphBuilderRelationships:
         )
         builder.add_resources([sa, pod])
 
-        deps = builder.get_dependencies(pod.uid, "downstream")
+        deps = builder.get_dependencies(pod.uid, "upstream")
         assert sa.uid in deps
 
     def test_extract_deployment_replicaset_relationship(self):
@@ -321,8 +321,11 @@ class TestGraphBuilderRelationships:
         )
         builder.add_resources([pod, svc])
 
-        deps = builder.get_dependencies(svc.uid, "downstream")
+        deps = builder.get_dependencies(svc.uid, "upstream")
         assert pod.uid in deps
+
+        pod_dependents = builder.get_dependencies(pod.uid, "downstream")
+        assert svc.uid in pod_dependents
 
     def test_extract_pvc_pv_relationship(self):
         """Test PVC binds-to PV relationship"""
@@ -341,7 +344,7 @@ class TestGraphBuilderRelationships:
         )
         builder.add_resources([pv, pvc])
 
-        deps = builder.get_dependencies(pvc.uid, "downstream")
+        deps = builder.get_dependencies(pvc.uid, "upstream")
         assert pv.uid in deps
 
     def test_extract_statefulset_pod_relationship(self):
@@ -464,8 +467,11 @@ class TestGraphBuilderMethods:
         builder._add_vertex(node)
         builder._add_edge(pod.uid, node.uid, "scheduled-on")
 
-        upstream = builder.get_dependencies(node.uid, "upstream")
-        assert pod.uid in upstream
+        upstream = builder.get_dependencies(pod.uid, "upstream")
+        assert node.uid in upstream
+
+        downstream = builder.get_dependencies(node.uid, "downstream")
+        assert pod.uid in downstream
 
     def test_get_dependencies_nonexistent_uid(self):
         """Test get_dependencies with nonexistent UID returns empty"""

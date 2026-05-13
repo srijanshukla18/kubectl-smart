@@ -17,6 +17,8 @@
 # Now kubectl-smart is available globally in your terminal
 kubectl-smart --help
 kubectl-smart diag pod failing-pod              # Root-cause analysis
+kubectl-smart diag pod failing-pod -o json      # Machine-readable diagnosis
+kubectl-smart diag pod --all -n production      # Batch diagnosis
 kubectl-smart graph pod my-app --upstream       # Dependency visualization  
 kubectl-smart top production                    # Predictive outlook
 ```
@@ -27,8 +29,19 @@ kubectl-smart top production                    # Predictive outlook
 ```bash
 kubectl-smart diag pod failing-pod
 kubectl-smart diag deploy my-app -n production
+kubectl-smart diag pod failing-pod -o json
+kubectl-smart diag pod failing-pod --watch --interval 5
+kubectl-smart diag pod --all -n production
 ```
 **Purpose**: One-shot diagnosis that surfaces root cause and contributing factors
+
+Supported resource types: `pod`, `deploy`, `sts`, `job`, `svc`, `rs`, `ds`.
+
+Output and modes:
+- Text output is the default; `-o json` is available for automation.
+- `--watch` reruns diagnosis on an interval for a single resource.
+- `--all` diagnoses every resource of the selected type in the namespace/current context.
+- Exit code is `0` when no warning or critical issues are found, and `2` when issues or command errors are found.
 
 ### 2. `graph` - Dependency Visualization
 ```bash
@@ -36,6 +49,11 @@ kubectl-smart graph pod my-app --upstream
 kubectl-smart graph deploy checkout --downstream
 ```
 **Purpose**: ASCII dependency tree for blast-radius analysis
+
+Direction semantics:
+- `--upstream` shows what the target depends on, such as a Pod's PVCs, ConfigMaps, Secrets, ServiceAccount, and Node.
+- `--downstream` shows resources impacted by the target, such as Pods owned by a Deployment/ReplicaSet or selected by a Service.
+- If neither flag is provided, `graph` defaults to downstream.
 
 ### 3. `top` - Predictive Outlook
 ```bash
@@ -90,8 +108,6 @@ Status: CrashLoopBackOff
 
 ### 🔗 graph (dependency visualization)
 
-### 🔗 graph (dependency visualization)
-
 ```
 🔗 DEPENDENCY GRAPH: Pod/default/api-pod
 
@@ -138,7 +154,7 @@ Forecast horizon: 48h
 The implementation features:
 
 - **CLI Front-End** → **Collectors** → **Parsers** → **Graph Builder** → **Scorers** → **Renderers**
-- **Async performance**: <3s on 2k-resource clusters
+- **Async collectors** with bounded kubectl calls and graceful degradation for optional data sources
 - **Issue scoring**: Configurable heuristic weights for prioritization
 - **Professional output**: Rich terminal formatting
 
@@ -158,7 +174,7 @@ kubectl-smart --version
 
 **Early stage project - feedback welcome!**
 - ✅ Core functionality implemented
-- ✅ Performance targets met (<3s on 2k-resource clusters)
+- ✅ Async collectors with bounded kubectl calls
 - ✅ Read-only safety guarantee
 - ✅ Modular, extensible architecture
 - 🔄 Actively seeking user feedback and real-world testing

@@ -132,7 +132,7 @@ log_info "Testing kubectl-smart --help with 10s timeout..."
 run_test_with_output "Help command" "timeout 10s kubectl-smart --help" "Intelligent kubectl plugin"
 
 log_info "Testing kubectl-smart --version with 10s timeout..."
-run_test_with_output "Version command" "timeout 10s kubectl-smart --version" "kubectl-smart v1.0.0"
+run_test_with_output "Version command" "timeout 10s kubectl-smart --version" "kubectl-smart v0.1.0"
 
 # Get available resources for testing
 log_info "Discovering available resources in minikube..."
@@ -301,7 +301,7 @@ if [ -n "$RUNNING_POD" ] && [ -n "$RUNNING_POD_NS" ]; then
 fi
 
 # Test version in different ways
-run_test_with_output "global version flag" "kubectl-smart --version" "kubectl-smart v1.0.0"
+run_test_with_output "global version flag" "kubectl-smart --version" "kubectl-smart v0.1.0"
 
 # =============================================================================
 # CONTEXT AND NAMESPACE TESTS
