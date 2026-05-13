@@ -227,6 +227,9 @@ class TerminalRenderer:
         console.print("[dim]Analysis used the available signals; these collectors were incomplete:[/dim]")
         for gap in data_gaps[:5]:
             console.print(f"  [dim]• {gap}[/dim]")
+        remaining = len(data_gaps) - 5
+        if remaining > 0:
+            console.print(f"  [dim]• ... {remaining} more data gaps not shown[/dim]")
     
     def render_error(
         self,

@@ -231,6 +231,26 @@ class TestRenderDiagnosis:
         assert "DATA GAPS" in output
         assert "pods/log" in output
 
+    def test_render_diagnosis_notes_truncated_data_gaps(
+        self, sample_subject_ctx, sample_resource_record
+    ):
+        """Test diagnosis rendering does not silently hide extra gaps."""
+        renderer = TerminalRenderer(colors_enabled=False)
+        result = DiagnosisResult(
+            subject=sample_subject_ctx,
+            resource=sample_resource_record,
+            data_gaps=[f"collector {index} unavailable" for index in range(7)],
+            analysis_duration=1.0,
+        )
+
+        output = renderer.render_diagnosis(result)
+
+        assert "DATA GAPS (7)" in output
+        assert "collector 0 unavailable" in output
+        assert "collector 4 unavailable" in output
+        assert "collector 5 unavailable" not in output
+        assert "... 2 more data gaps not shown" in output
+
     def test_render_diagnosis_resource_not_found(self, sample_subject_ctx):
         """Test diagnosis rendering when resource not found"""
         renderer = TerminalRenderer(colors_enabled=False)
