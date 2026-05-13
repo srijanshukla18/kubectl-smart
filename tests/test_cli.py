@@ -720,6 +720,36 @@ class TestGraphCommand:
         assert result.exit_code == 0
         assert mock_execute.await_count == 1
 
+    def test_graph_passes_timeout_to_command_config(self):
+        """Test graph --timeout configures all graph collectors."""
+        from kubectl_smart.cli.commands import CommandResult
+
+        captured = {}
+
+        class FakeGraphCommand:
+            def __init__(self, config=None):
+                captured["timeout"] = config.collector_timeout
+
+            async def execute(self, _subject, direction="downstream"):
+                captured["direction"] = direction
+                return CommandResult(output="Graph output", exit_code=0)
+
+        with patch("kubectl_smart.cli.commands.GraphCommand", FakeGraphCommand):
+            result = runner.invoke(
+                app,
+                ["graph", "pod", "api", "--upstream", "--timeout", "2.5"],
+            )
+
+        assert result.exit_code == 0
+        assert captured == {"timeout": 2.5, "direction": "upstream"}
+
+    def test_graph_rejects_invalid_timeout(self):
+        """Test graph --timeout must be positive."""
+        result = runner.invoke(app, ["graph", "pod", "api", "--timeout", "0"])
+
+        assert result.exit_code == 2
+        assert "--timeout must be greater than 0 seconds" in result.stderr
+
 
 class TestTopCommand:
     """Tests for top command"""

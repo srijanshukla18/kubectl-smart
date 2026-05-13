@@ -71,6 +71,7 @@ JSON automation contract:
 ```bash
 kubectl-smart graph pod my-app --upstream
 kubectl-smart graph deploy checkout --downstream
+kubectl-smart graph deploy checkout --downstream --timeout 3
 ```
 **Purpose**: ASCII dependency tree for blast-radius analysis
 
@@ -79,6 +80,8 @@ Direction semantics:
 - `--downstream` shows resources impacted by the target, such as Pods owned by a Deployment/ReplicaSet or selected by a Service.
 - Passing both flags shows both sections in one output.
 - If neither flag is provided, `graph` defaults to downstream.
+- `--timeout` sets the per-kubectl collector timeout for graph discovery in
+  slow or degraded API servers.
 
 ### 3. `top` - Predictive Outlook
 ```bash

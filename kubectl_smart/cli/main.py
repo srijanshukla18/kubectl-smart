@@ -465,6 +465,7 @@ def graph(
     context: Annotated[Optional[str], typer.Option("--context", help="kubectl context")] = None,
     upstream: Annotated[bool, typer.Option("--upstream", help="Show upstream dependencies")] = False,
     downstream: Annotated[bool, typer.Option("--downstream", help="Show downstream dependencies")] = False,
+    timeout: Annotated[Optional[float], typer.Option("--timeout", help="Per-kubectl timeout in seconds")] = None,
 ):
     """
     🔗 Dependency visualization (ASCII tree)
@@ -481,11 +482,21 @@ def graph(
       kubectl-smart graph pod checkout-xyz --upstream
       kubectl-smart graph deploy my-app --downstream
       kubectl-smart graph sts database -n prod
+      kubectl-smart graph deploy my-app --downstream --timeout 3
     """
-    _validate_resource_name(name)
-    _validate_namespace(namespace)
-    context = _resolve_context(context)
-    _validate_context(context)
+    if timeout is not None and timeout <= 0:
+        typer.echo("Error: --timeout must be greater than 0 seconds", err=True)
+        raise typer.Exit(2)
+
+    try:
+        _validate_resource_name(name)
+        _validate_namespace(namespace)
+        context = _resolve_context(context)
+        _validate_context(context)
+        _validate_timeout(timeout)
+    except typer.BadParameter as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(2)
     
     # Default to downstream if neither specified
     if not upstream and not downstream:
@@ -526,7 +537,10 @@ def graph(
     from .commands import GraphCommand
     
     # Create and run command
-    command = GraphCommand()
+    from ..models import AnalysisConfig
+
+    config = AnalysisConfig(collector_timeout=timeout) if timeout is not None else None
+    command = GraphCommand(config=config)
     
     try:
         result = asyncio.run(command.execute(subject, direction))
