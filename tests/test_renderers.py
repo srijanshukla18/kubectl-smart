@@ -546,6 +546,27 @@ class TestRenderIssue:
         # Should show max 3 actions
         assert "Action 3" in output
 
+    def test_render_issue_with_details_without_evidence_is_explicit(self):
+        """Test detailed high-severity issues do not silently omit evidence."""
+        renderer = TerminalRenderer(colors_enabled=False)
+        issue = Issue(
+            resource_uid="test",
+            title="Warning Without Evidence",
+            description="A warning issue",
+            severity=IssueSeverity.WARNING,
+            score=70.0,
+            reason="Warning",
+            message="Warning",
+        )
+        from rich.console import Console
+
+        console = Console(file=None)
+        with console.capture() as capture:
+            renderer._render_issue(console, issue, show_details=True)
+        output = capture.get()
+
+        assert "Evidence: no supporting evidence attached" in output
+
 
 class TestJsonRenderer:
     """Tests for JsonRenderer class."""

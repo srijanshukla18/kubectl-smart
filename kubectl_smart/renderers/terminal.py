@@ -257,6 +257,11 @@ class TerminalRenderer:
             console.print("    [dim]Evidence:[/dim]")
             for evidence in issue.evidence[:5]:
                 console.print(f"    [dim]• {evidence}[/dim]")
+        elif show_details and issue.severity in {
+            IssueSeverity.CRITICAL,
+            IssueSeverity.WARNING,
+        }:
+            console.print("    [dim]Evidence: no supporting evidence attached[/dim]")
         
         if show_details and issue.suggested_actions:
             console.print("    [dim]Suggested actions:[/dim]")
