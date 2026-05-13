@@ -39,7 +39,9 @@ Supported resource types: `pod`, `deploy`/`deployment`, `sts`/`statefulset`, `jo
 
 Output and modes:
 - Text output is the default; `-o json` is available for automation.
-- `--watch` reruns diagnosis on an interval for a single resource.
+- `--watch` reruns diagnosis on an interval for a single resource and currently
+  supports text output only. `--watch -o json` is rejected instead of emitting a
+  misleading mixed contract.
 - `--all` diagnoses every resource of the selected type in the namespace/current context.
 - `--max-concurrent` controls batch diagnosis concurrency so you can reduce API pressure in degraded clusters.
 - `--context` pins the kubectl context. For repeatable local demos/tests, you can also set `KUBECTL_SMART_CONTEXT=kind-kubectl-smart-demo`.

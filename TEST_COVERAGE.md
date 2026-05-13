@@ -4,8 +4,8 @@
 
 - Unit test command: `uv run --extra dev pytest`
 - Coverage command: `uv run --extra dev pytest --cov=kubectl_smart --cov-report=term-missing`
-- Latest local result: `328 passed`
-- Latest measured coverage: `70%`
+- Latest local result: `397 passed`
+- Latest measured coverage: `79%`
 
 Coverage is measured, not estimated. The default `pytest` command does not enforce
 coverage so contributors get a clear functional signal first. Use the explicit
@@ -19,14 +19,20 @@ coverage command above when working on test depth.
 - Scoring heuristics and custom weight loading
 - Forecasting primitives
 - Terminal rendering
+- JSON rendering contracts, including surfaced diagnostic issues, data gaps, and
+  batch summaries
 - CLI option parsing and backwards-compatible aliases
+- Batch diagnosis exit-code semantics, empty selections, list failures, and
+  per-resource data-gap preservation
+- Watch-state extraction for warning, critical, and unexpected exit codes
 
 ## Known Coverage Gaps
 
-- `kubectl_smart/batch.py`
-- `kubectl_smart/watch.py`
-- `kubectl_smart/renderers/json_renderer.py`
-- Some error paths in command orchestration and optional collectors
+- `kubectl_smart/watch.py` long-running loop, terminal refresh, and signal
+  handling branches
+- Some command orchestration fallbacks and optional collector paths
+- Integration-heavy collector behavior that depends on live Kubernetes API
+  availability, metrics-server, kubelet proxy access, and RBAC envelopes
 
 ## Notes
 
@@ -34,3 +40,9 @@ The remaining gaps are mostly integration-heavy paths that should be covered wit
 focused tests before reintroducing a coverage gate. Until then, the public quality
 gate is the functional test suite plus local demo validation against an explicit
 local Kubernetes context.
+
+Latest measured command:
+
+```bash
+uv run --extra dev pytest --cov=kubectl_smart --cov-report=term-missing
+```
