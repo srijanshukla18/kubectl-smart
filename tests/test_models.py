@@ -501,6 +501,56 @@ class TestDiagnosisResult:
         assert warning.exit_code == 1
         assert critical.exit_code == 2
 
+    def test_diagnosis_result_exit_code_counts_surfaced_root_cause(
+        self, sample_subject_ctx, sample_resource_record
+    ):
+        """Test exit code does not go green when root cause is not in issues."""
+        root_cause = Issue(
+            resource_uid="test",
+            title="Missing Secret",
+            description="Secret token is missing",
+            severity=IssueSeverity.CRITICAL,
+            score=95.0,
+            reason="Failed",
+            message='secret "token" not found',
+        )
+        result = DiagnosisResult(
+            subject=sample_subject_ctx,
+            resource=sample_resource_record,
+            root_cause=root_cause,
+            analysis_duration=1.0,
+        )
+
+        assert len(result.diagnostic_issues) == 1
+        assert len(result.critical_issues) == 1
+        assert result.exit_code == 2
+
+    def test_diagnosis_result_deduplicates_surfaced_issues(
+        self, sample_subject_ctx, sample_resource_record
+    ):
+        """Test issue summaries do not double-count root cause subsets."""
+        issue = Issue(
+            resource_uid="test",
+            title="Warning",
+            description="Warning issue",
+            severity=IssueSeverity.WARNING,
+            score=60.0,
+            reason="WarningError",
+            message="Warning message",
+        )
+        result = DiagnosisResult(
+            subject=sample_subject_ctx,
+            resource=sample_resource_record,
+            issues=[issue],
+            root_cause=issue,
+            contributing_factors=[issue],
+            analysis_duration=1.0,
+        )
+
+        assert len(result.diagnostic_issues) == 1
+        assert len(result.warning_issues) == 1
+        assert result.exit_code == 1
+
 
 class TestGraphResult:
     """Tests for GraphResult model"""

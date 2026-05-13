@@ -59,7 +59,7 @@ class JsonRenderer:
             ],
             "issues": [self._serialize_issue(i) for i in result.issues],
             "issue_summary": {
-                "total": len(result.issues),
+                "total": len(result.diagnostic_issues),
                 "critical": len(result.critical_issues),
                 "warning": len(result.warning_issues),
             },
@@ -160,7 +160,7 @@ class JsonRenderer:
                     },
                     "status": r.resource.status if r.resource else None,
                     "root_cause": self._serialize_issue(r.root_cause) if r.root_cause else None,
-                    "issue_count": len(r.issues),
+                    "issue_count": len(r.diagnostic_issues),
                     "critical_count": len(r.critical_issues),
                     "warning_count": len(r.warning_issues),
                     "suggested_actions": r.suggested_actions,

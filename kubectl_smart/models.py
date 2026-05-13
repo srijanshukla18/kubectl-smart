@@ -203,16 +203,50 @@ class DiagnosisResult(BaseModel):
     data_gaps: List[str] = Field(default_factory=list, description="Collectors or signals that were unavailable")
     analysis_duration: float = Field(..., description="Analysis time in seconds")
     timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+    @property
+    def diagnostic_issues(self) -> List[Issue]:
+        """Get all surfaced diagnostic issues without duplicates."""
+        seen: set[tuple[str, str, str, str, str, float]] = set()
+        issues: List[Issue] = []
+
+        for issue in [
+            *self.issues,
+            *(self.contributing_factors or []),
+            *([self.root_cause] if self.root_cause else []),
+        ]:
+            key = (
+                issue.resource_uid,
+                issue.reason,
+                issue.message,
+                issue.title,
+                issue.severity.value,
+                issue.score,
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            issues.append(issue)
+
+        return issues
     
     @property
     def critical_issues(self) -> List[Issue]:
         """Get all critical issues"""
-        return [issue for issue in self.issues if issue.severity == IssueSeverity.CRITICAL]
+        return [
+            issue
+            for issue in self.diagnostic_issues
+            if issue.severity == IssueSeverity.CRITICAL
+        ]
     
     @property
     def warning_issues(self) -> List[Issue]:
         """Get all warning issues"""
-        return [issue for issue in self.issues if issue.severity == IssueSeverity.WARNING]
+        return [
+            issue
+            for issue in self.diagnostic_issues
+            if issue.severity == IssueSeverity.WARNING
+        ]
 
     @property
     def exit_code(self) -> int:

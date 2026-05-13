@@ -68,6 +68,23 @@ class TestRenderDiagnosis:
         assert "LIKELY ROOT CAUSE" in output
         assert sample_issue.title in output
 
+    def test_render_diagnosis_root_cause_only_is_nonzero(
+        self, sample_subject_ctx, sample_resource_record, sample_issue
+    ):
+        """Test surfaced root causes affect JSON summary and exit code."""
+        result = DiagnosisResult(
+            subject=sample_subject_ctx,
+            resource=sample_resource_record,
+            root_cause=sample_issue,
+            analysis_duration=1.0,
+        )
+
+        output = JsonRenderer().render_diagnosis(result)
+
+        assert '"total": 1' in output
+        assert '"critical": 1' in output
+        assert '"exit_code": 2' in output
+
     def test_render_diagnosis_root_cause_header_uses_issue_severity(
         self, sample_subject_ctx, sample_resource_record
     ):
