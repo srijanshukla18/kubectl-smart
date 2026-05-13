@@ -2,9 +2,8 @@
 # Comprehensive test suite for kubectl-smart
 # Tests all commands, options, and variations against an explicit local context
 
-# Continue on test failures - don't exit early
-# # set -e  # DISABLED  # Disabled to allow tests to continue on failure
-# set -o pipefail
+# Continue on individual test failures so the final report shows every failure,
+# then exit nonzero if anything failed.
 
 # Colors for output
 RED='\033[0;31m'
@@ -19,15 +18,23 @@ PASSED_TESTS=0
 FAILED_TESTS=0
 KUBECTL_SMART_CONTEXT="${KUBECTL_SMART_CONTEXT:-kind-kubectl-smart-demo}"
 KUBECTL_SMART_KUBECONFIG="${KUBECTL_SMART_KUBECONFIG:-$PWD/.kubectl-smart-demo.kubeconfig}"
+KUBECTL_SMART_CMD_STRING="${KUBECTL_SMART_CMD:-./kubectl-smart}"
 SAFE_CONTEXT_PATTERN="${KUBECTL_SMART_SAFE_CONTEXT_PATTERN:-^(kind-|minikube$|colima$)}"
 REAL_KUBECTL="$(command -v kubectl || true)"
 TIMEOUT_BIN="$(command -v timeout || command -v gtimeout || true)"
+KUBECTL_SMART_CMD=()
+read -r -a KUBECTL_SMART_CMD <<< "$KUBECTL_SMART_CMD_STRING"
+PREPARED_CMD=()
 
 log_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
 }
 
 log_success() {
+    echo -e "${GREEN}[OK]${NC} $1"
+}
+
+log_pass() {
     echo -e "${GREEN}[PASS]${NC} $1"
     ((PASSED_TESTS++))
 }
@@ -41,6 +48,38 @@ log_warning() {
     echo -e "${YELLOW}[WARN]${NC} $1"
 }
 
+prepare_command_array() {
+    local command="$1"
+
+    PREPARED_CMD=()
+    IFS=' ' read -r -a PREPARED_CMD <<< "$command"
+
+    if [ "${PREPARED_CMD[0]:-}" = "timeout" ]; then
+        if [ -n "$TIMEOUT_BIN" ]; then
+            PREPARED_CMD[0]="$TIMEOUT_BIN"
+        else
+            log_warning "timeout/gtimeout not found; running without timeout"
+            PREPARED_CMD=("${PREPARED_CMD[@]:2}")
+        fi
+    fi
+
+    local i
+    for i in "${!PREPARED_CMD[@]}"; do
+        if [ "${PREPARED_CMD[$i]}" = "kubectl-smart" ]; then
+            PREPARED_CMD=(
+                "${PREPARED_CMD[@]:0:$i}"
+                "${KUBECTL_SMART_CMD[@]}"
+                "${PREPARED_CMD[@]:$((i + 1))}"
+            )
+            return
+        fi
+    done
+}
+
+kubectl-smart() {
+    "${KUBECTL_SMART_CMD[@]}" "$@"
+}
+
 run_test() {
     local test_name="$1"
     local command="$2"
@@ -52,15 +91,8 @@ run_test() {
 
     # Run command safely using an array to avoid eval injection
     local -a cmd_array
-    IFS=' ' read -r -a cmd_array <<< "$command"
-    if [ "${cmd_array[0]:-}" = "timeout" ]; then
-        if [ -n "$TIMEOUT_BIN" ]; then
-            cmd_array[0]="$TIMEOUT_BIN"
-        else
-            log_warning "timeout/gtimeout not found; running without timeout"
-            cmd_array=("${cmd_array[@]:2}")
-        fi
-    fi
+    prepare_command_array "$command"
+    cmd_array=("${PREPARED_CMD[@]}")
     "${cmd_array[@]}"
     local exit_code=$?
 
@@ -78,7 +110,7 @@ run_test() {
     fi
 
     if $test_passed; then
-        log_success "$test_name"
+        log_pass "$test_name"
     else
         log_error "$test_name - Expected exit code $expected_exit_code, got $exit_code"
     fi
@@ -96,20 +128,13 @@ run_test_with_output() {
     
     local output exit_code
     local -a cmd_array
-    IFS=' ' read -r -a cmd_array <<< "$command"
-    if [ "${cmd_array[0]:-}" = "timeout" ]; then
-        if [ -n "$TIMEOUT_BIN" ]; then
-            cmd_array[0]="$TIMEOUT_BIN"
-        else
-            log_warning "timeout/gtimeout not found; running without timeout"
-            cmd_array=("${cmd_array[@]:2}")
-        fi
-    fi
+    prepare_command_array "$command"
+    cmd_array=("${PREPARED_CMD[@]}")
     output=$("${cmd_array[@]}" 2>&1)
     exit_code=$?
 
     if [[ "$output" =~ $expected_pattern ]]; then
-        log_success "$test_name"
+        log_pass "$test_name"
     else
         log_error "$test_name - Output doesn't match expected pattern (exit code $exit_code)"
         echo "Expected pattern: $expected_pattern"
@@ -149,14 +174,15 @@ kubectl() {
 
 log_success "using explicit local Kubernetes context $KUBECTL_SMART_CONTEXT"
 log_success "using kubeconfig $KUBECONFIG"
+log_success "using kubectl-smart command: $KUBECTL_SMART_CMD_STRING"
 
-# Check if kubectl-smart is available  
-log_info "Checking kubectl-smart availability..."
-if ! command -v kubectl-smart &> /dev/null; then
-    log_error "kubectl-smart not found. Please install it first: ./install.sh"
+# Check if the selected kubectl-smart command is available.
+log_info "Checking selected kubectl-smart command..."
+if ! kubectl-smart --version >/dev/null 2>&1; then
+    log_error "kubectl-smart command failed. Set KUBECTL_SMART_CMD=kubectl-smart to test an installed binary, or run from the repository checkout."
     exit 1
 fi
-log_success "kubectl-smart found"
+log_success "kubectl-smart command works"
 
 # Test basic functionality first
 log_info "Testing basic functionality..."
@@ -333,7 +359,7 @@ echo "========================"
 
 # Test global flags with different commands
 if [ -n "$RUNNING_POD" ] && [ -n "$RUNNING_POD_NS" ]; then
-    run_test "diag with debug flag" "kubectl-smart --debug diag pod $RUNNING_POD -n $RUNNING_POD_NS" 2
+    run_test "diag with debug flag" "kubectl-smart --debug diag pod $RUNNING_POD -n $RUNNING_POD_NS" 0
 fi
 
 # Test version in different ways
@@ -347,7 +373,7 @@ echo "======================================="
 
 # Test explicit context specification
 if [ -n "$RUNNING_POD" ] && [ -n "$RUNNING_POD_NS" ]; then
-    run_test "diag with explicit context" "kubectl-smart diag pod $RUNNING_POD -n $RUNNING_POD_NS --context=$KUBECTL_SMART_CONTEXT" 2
+    run_test "diag with explicit context" "kubectl-smart diag pod $RUNNING_POD -n $RUNNING_POD_NS --context=$KUBECTL_SMART_CONTEXT" 0
     run_test "graph with explicit context" "kubectl-smart graph pod $RUNNING_POD -n $RUNNING_POD_NS --context=$KUBECTL_SMART_CONTEXT --upstream" 0
 fi
 
@@ -374,7 +400,7 @@ run_test_with_output "help command performance" "/usr/bin/time -p kubectl-smart 
 
 if [ -n "$RUNNING_POD" ] && [ -n "$RUNNING_POD_NS" ]; then
     # Test command execution time (should be ≤3s as per spec)
-    run_test "diag performance test" "timeout 5s kubectl-smart diag pod $RUNNING_POD -n $RUNNING_POD_NS" 2
+    run_test "diag performance test" "timeout 5s kubectl-smart diag pod $RUNNING_POD -n $RUNNING_POD_NS" 0
     run_test "graph performance test" "timeout 5s kubectl-smart graph pod $RUNNING_POD -n $RUNNING_POD_NS --upstream" 0
 fi
 
@@ -529,18 +555,12 @@ if [ $FAILED_TESTS -eq 0 ]; then
     log_success "All tests passed! 🎉"
     echo ""
     echo "kubectl-smart is working on local context $KUBECTL_SMART_CONTEXT!"
-    echo "Ready for production use! 🚀"
-    # exit 0  # Commented out to allow script continuation for debugging
+    echo "Local integration gate is green."
+    exit 0
 else
     log_error "$FAILED_TESTS tests failed"
     echo ""
     echo "Some tests failed. Please review the output above."
     echo "This might indicate configuration issues or missing resources in local context $KUBECTL_SMART_CONTEXT."
-    # exit 1  # Commented out to allow script continuation for debugging
+    exit 1
 fi
-
-# Final summary for debugging
-echo ""
-echo "🏁 Test Execution Complete"
-echo "========================="
-echo "Total: $TOTAL_TESTS, Passed: $((TOTAL_TESTS - FAILED_TESTS)), Failed: $FAILED_TESTS"
