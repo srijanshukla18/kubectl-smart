@@ -268,25 +268,25 @@ class ResourceWatcher:
             icon = self._get_event_icon(change.event_type)
 
             if change.event_type == "status_change":
-                print(f"\n{icon} [{timestamp}] Status: {change.details['previous']} → {change.details['current']}")
+                print(f"\n{icon} [{timestamp}] Status: {change.details['previous']} → {change.details['current']}", flush=True)
 
             elif change.event_type == "new_issue":
                 issue = change.details.get('issue') or change.details.get('current')
                 score = change.details.get('score', '')
                 score_str = f" (score: {score:.1f})" if score else ""
-                print(f"\n{icon} [{timestamp}] New issue: {issue}{score_str}")
+                print(f"\n{icon} [{timestamp}] New issue: {issue}{score_str}", flush=True)
 
             elif change.event_type == "issue_resolved":
                 issue = change.details.get('issue') or change.details.get('previous')
-                print(f"\n{icon} [{timestamp}] Resolved: {issue}")
+                print(f"\n{icon} [{timestamp}] Resolved: {issue}", flush=True)
 
             elif change.event_type == "score_change":
                 delta = change.details['delta']
                 direction = "↑" if delta > 0 else "↓"
-                print(f"\n{icon} [{timestamp}] Score: {change.details['previous_score']:.1f} → {change.details['current_score']:.1f} ({direction}{abs(delta):.1f})")
+                print(f"\n{icon} [{timestamp}] Score: {change.details['previous_score']:.1f} → {change.details['current_score']:.1f} ({direction}{abs(delta):.1f})", flush=True)
 
             elif change.event_type == "root_cause_change":
-                print(f"\n{icon} [{timestamp}] Root cause changed: {change.details['previous']} → {change.details['current']}")
+                print(f"\n{icon} [{timestamp}] Root cause changed: {change.details['previous']} → {change.details['current']}", flush=True)
 
             # Trigger callback if registered
             if self.on_change:
@@ -294,20 +294,20 @@ class ResourceWatcher:
 
     def _print_summary(self) -> None:
         """Print watch session summary"""
-        print("\n" + "=" * 60)
-        print("📊 WATCH SUMMARY")
-        print(f"  Duration: {self.iteration_count * self.interval_seconds:.0f}s ({self.iteration_count} checks)")
-        print(f"  Events detected: {len(self.events)}")
+        print("\n" + "=" * 60, flush=True)
+        print("📊 WATCH SUMMARY", flush=True)
+        print(f"  Duration: {self.iteration_count * self.interval_seconds:.0f}s ({self.iteration_count} checks)", flush=True)
+        print(f"  Events detected: {len(self.events)}", flush=True)
 
         if self.events:
-            print("\n  Event breakdown:")
+            print("\n  Event breakdown:", flush=True)
             event_types = {}
             for event in self.events:
                 event_types[event.event_type] = event_types.get(event.event_type, 0) + 1
 
             for event_type, count in sorted(event_types.items()):
                 icon = self._get_event_icon(event_type)
-                print(f"    {icon} {event_type}: {count}")
+                print(f"    {icon} {event_type}: {count}", flush=True)
 
     def _get_event_icon(self, event_type: str) -> str:
         """Get icon for event type"""
