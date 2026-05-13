@@ -1,7 +1,7 @@
 """Tests for kubectl_smart/cli/main.py"""
 
 import os
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from typer.testing import CliRunner
@@ -168,8 +168,43 @@ class TestDiagCommand:
         result = runner.invoke(app, ["diag", "pod", "--all", "-n", "default"])
 
         assert result.exit_code == 0
-        assert "Data gaps: 1" in result.stdout
+        assert "Data gaps: 1 | Concurrency: 5" in result.stdout
         assert "test-pod: Running | ✅ healthy | data gaps: 1" in result.stdout
+
+    @patch("kubectl_smart.batch.BatchAnalyzer")
+    def test_diag_all_passes_max_concurrent(self, mock_batch_analyzer):
+        """Test --max-concurrent is passed to batch analysis."""
+        from kubectl_smart.batch import BatchResult
+
+        analyzer = mock_batch_analyzer.return_value
+        analyzer.diagnose_all = AsyncMock(
+            return_value=BatchResult(
+                total_resources=0,
+                successful=0,
+                failed=0,
+                errors=[{"message": "No Pods found"}],
+                duration=0.1,
+            )
+        )
+
+        result = runner.invoke(
+            app,
+            ["diag", "pod", "--all", "-n", "default", "--max-concurrent", "2"],
+        )
+
+        assert result.exit_code == 0
+        assert mock_batch_analyzer.call_args.kwargs["max_concurrent"] == 2
+        assert "Concurrency: 2" in result.stdout
+
+    def test_diag_all_rejects_invalid_max_concurrent(self):
+        """Test --max-concurrent must be positive."""
+        result = runner.invoke(
+            app,
+            ["diag", "pod", "--all", "--max-concurrent", "0"],
+        )
+
+        assert result.exit_code == 2
+        assert "--max-concurrent must be >= 1" in result.output
 
 
 class TestGraphCommand:

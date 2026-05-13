@@ -134,6 +134,7 @@ class JsonRenderer:
                 "failed": batch_info.get("failed", 0),
                 "duration_seconds": batch_info.get("duration", 0),
                 "data_gaps": sum(len(r.data_gaps) for r in results),
+                "max_concurrent": batch_info.get("max_concurrent"),
             },
             "results": [
                 {

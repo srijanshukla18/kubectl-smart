@@ -157,6 +157,7 @@ def diag(
     output: Annotated[str, typer.Option("--output", "-o", help="Output format (text, json)")] = "text",
     watch: Annotated[bool, typer.Option("--watch", "-w", help="Watch for changes and re-run diagnosis")] = False,
     all_resources: Annotated[bool, typer.Option("--all", help="Diagnose all resources of this type")] = False,
+    max_concurrent: Annotated[int, typer.Option("--max-concurrent", help="Max concurrent diagnoses for --all")] = 5,
     interval: Annotated[int, typer.Option("--interval", help="Watch interval in seconds")] = 5,
 ):
     """
@@ -178,6 +179,7 @@ def diag(
       kubectl-smart diag pod failing-pod -o json        # JSON output
       kubectl-smart diag pod failing-pod --watch        # Continuous monitoring
       kubectl-smart diag pod --all -n production        # Diagnose all pods
+      kubectl-smart diag pod --all -n production --max-concurrent 2
     """
     # Validate inputs
     if not name and not all_resources:
@@ -191,6 +193,9 @@ def diag(
         raise typer.Exit(2)
     if interval < 1:
         typer.echo("Error: Watch interval must be >= 1 second", err=True)
+        raise typer.Exit(2)
+    if max_concurrent < 1:
+        typer.echo("Error: --max-concurrent must be >= 1", err=True)
         raise typer.Exit(2)
 
     if name is not None:
@@ -224,7 +229,7 @@ def diag(
         from ..batch import BatchAnalyzer
         from ..renderers.json_renderer import JsonRenderer
 
-        analyzer = BatchAnalyzer()
+        analyzer = BatchAnalyzer(max_concurrent=max_concurrent)
         kind = kind_map[resource_type]
 
         try:
@@ -244,6 +249,7 @@ def diag(
                         "failed": batch_result.failed,
                         "duration": batch_result.duration,
                         "errors": batch_result.errors,
+                        "max_concurrent": max_concurrent,
                     }
                 ))
             else:
@@ -255,7 +261,8 @@ def diag(
                 typer.echo(f"Total: {batch_result.total_resources} | "
                           f"Analyzed: {batch_result.successful} | "
                           f"Failed: {batch_result.failed} | "
-                          f"Data gaps: {total_data_gaps}")
+                          f"Data gaps: {total_data_gaps} | "
+                          f"Concurrency: {max_concurrent}")
                 typer.echo("=" * 60)
 
                 for result in batch_result.results:

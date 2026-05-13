@@ -93,10 +93,11 @@ assert_contains "$service_diag" "Endpoints/${NAMESPACE}/inventory-db: ready addr
 assert_contains "$service_diag" "No Pods in namespace match selector" "selector evidence"
 
 log "Checking admin batch diagnosis reports namespace-scale data gaps..."
-batch_diag="$(capture batch_diag kubectl-smart diag pod --all -n "$NAMESPACE")"
+batch_diag="$(capture batch_diag kubectl-smart diag pod --all -n "$NAMESPACE" --max-concurrent 1)"
 assert_status batch_diag 2
 assert_contains "$batch_diag" "Total: 3 | Analyzed: 3 | Failed: 0" "batch summary"
 assert_contains "$batch_diag" "Data gaps:" "batch data-gap summary"
+assert_contains "$batch_diag" "Concurrency: 1" "batch concurrency summary"
 
 if [ ! -f "$RBAC_KUBECONFIG" ]; then
   fail "Missing restricted kubeconfig $RBAC_KUBECONFIG; run ./demo-complex-scenarios.sh apply"

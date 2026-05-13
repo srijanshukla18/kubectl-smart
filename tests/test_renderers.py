@@ -548,10 +548,17 @@ class TestJsonRenderer:
 
         output = JsonRenderer().render_batch(
             [result],
-            {"total": 1, "successful": 1, "failed": 0, "duration": 1.0},
+            {
+                "total": 1,
+                "successful": 1,
+                "failed": 0,
+                "duration": 1.0,
+                "max_concurrent": 2,
+            },
         )
 
         assert '"data_gaps": 1' in output
+        assert '"max_concurrent": 2' in output
         assert '"data_gap_count": 1' in output
         assert "events events unavailable" in output
         assert "kubectl auth can-i list events" in output

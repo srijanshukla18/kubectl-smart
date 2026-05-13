@@ -31,7 +31,7 @@ kubectl-smart diag pod failing-pod
 kubectl-smart diag deploy my-app -n production
 kubectl-smart diag pod failing-pod -o json
 kubectl-smart diag pod failing-pod --watch --interval 5
-kubectl-smart diag pod --all -n production
+kubectl-smart diag pod --all -n production --max-concurrent 2
 ```
 **Purpose**: One-shot diagnosis that surfaces root cause and contributing factors
 
@@ -41,6 +41,7 @@ Output and modes:
 - Text output is the default; `-o json` is available for automation.
 - `--watch` reruns diagnosis on an interval for a single resource.
 - `--all` diagnoses every resource of the selected type in the namespace/current context.
+- `--max-concurrent` controls batch diagnosis concurrency so you can reduce API pressure in degraded clusters.
 - `--context` pins the kubectl context. For repeatable local demos/tests, you can also set `KUBECTL_SMART_CONTEXT=kind-kubectl-smart-demo`.
 - Exit code is `0` when no warning or critical issues are found, and `2` when issues or command errors are found.
 
