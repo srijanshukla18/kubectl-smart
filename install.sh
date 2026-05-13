@@ -1,7 +1,7 @@
 #!/bin/bash
 # Installation script for kubectl-smart using uv (idempotent)
 
-set -e
+set -euo pipefail
 
 echo "🚀 Installing kubectl-smart"
 echo "================================================"
@@ -15,7 +15,7 @@ fi
 # Check if uv is installed
 if ! command -v uv &> /dev/null; then
     echo "📦 Installing uv (Python package manager)..."
-    curl -LsSf https://astral.sh/uv/install.sh | sh
+    curl -fsSL https://astral.sh/uv/install.sh | sh
     
     # Source cargo env to make uv available immediately
     if [[ -f "$HOME/.cargo/env" ]]; then
@@ -38,16 +38,14 @@ fi
 # Ensure PATH includes local bin
 export PATH="$HOME/.local/bin:$PATH"
 
-# Check if kubectl-smart is already installed and uninstall to ensure fresh install
+# Report any existing binary, then let uv replace the tool environment.
 if command -v kubectl-smart &> /dev/null; then
-    echo "🔄 Found existing kubectl-smart, uninstalling to ensure clean installation..."
-    uv tool uninstall kubectl-smart 2>/dev/null || true
-    uv cache clean
+    echo "🔄 Found existing kubectl-smart at $(command -v kubectl-smart); reinstalling from current code..."
 fi
 
 # Install kubectl-smart globally using uv
 echo "📦 Installing kubectl-smart globally from current code..."
-uv tool install . --force
+uv tool install . --force --reinstall
 
 # Verify installation
 if command -v kubectl-smart &> /dev/null; then
