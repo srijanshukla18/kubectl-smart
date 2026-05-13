@@ -547,6 +547,7 @@ def top(
     namespace: Annotated[str, typer.Argument(help="Namespace to analyze")],
     context: Annotated[Optional[str], typer.Option("--context", help="kubectl context")] = None,
     horizon: Annotated[int, typer.Option("--horizon", "-H", help="Forecast horizon in hours", min=1, max=168)] = 48,
+    timeout: Annotated[Optional[float], typer.Option("--timeout", help="Per-kubectl timeout in seconds")] = None,
 ):
     """
     📈 Predictive capacity & certificate outlook
@@ -563,10 +564,20 @@ def top(
       kubectl-smart top production
       kubectl-smart top kube-system --horizon=24  
       kubectl-smart top staging
+      kubectl-smart top production --timeout 3
     """
-    _validate_namespace(namespace)
-    context = _resolve_context(context)
-    _validate_context(context)
+    if timeout is not None and timeout <= 0:
+        typer.echo("Error: --timeout must be greater than 0 seconds", err=True)
+        raise typer.Exit(2)
+
+    try:
+        _validate_namespace(namespace)
+        context = _resolve_context(context)
+        _validate_context(context)
+        _validate_timeout(timeout)
+    except typer.BadParameter as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(2)
     
     # Lazy import models
     from ..models import ResourceKind, SubjectCtx
@@ -584,7 +595,10 @@ def top(
     from .commands import TopCommand
     
     # Create and run command
-    command = TopCommand(forecast_horizon_hours=horizon)
+    from ..models import AnalysisConfig
+
+    config = AnalysisConfig(collector_timeout=timeout) if timeout is not None else None
+    command = TopCommand(forecast_horizon_hours=horizon, config=config)
     
     try:
         result = asyncio.run(command.execute(subject))

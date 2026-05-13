@@ -781,6 +781,36 @@ class TestTopCommand:
         assert result.exit_code == 0
         assert mock_execute.await_count == 1
 
+    def test_top_passes_timeout_to_command_config(self):
+        """Test top --timeout configures all top collectors."""
+        from kubectl_smart.cli.commands import CommandResult
+
+        captured = {}
+
+        class FakeTopCommand:
+            def __init__(self, forecast_horizon_hours=48, config=None):
+                captured["horizon"] = forecast_horizon_hours
+                captured["timeout"] = config.collector_timeout
+
+            async def execute(self, _subject):
+                return CommandResult(output="Top output", exit_code=0)
+
+        with patch("kubectl_smart.cli.commands.TopCommand", FakeTopCommand):
+            result = runner.invoke(
+                app,
+                ["top", "production", "--horizon", "24", "--timeout", "2.5"],
+            )
+
+        assert result.exit_code == 0
+        assert captured == {"horizon": 24, "timeout": 2.5}
+
+    def test_top_rejects_invalid_timeout(self):
+        """Test top --timeout must be positive."""
+        result = runner.invoke(app, ["top", "production", "--timeout", "0"])
+
+        assert result.exit_code == 2
+        assert "--timeout must be greater than 0 seconds" in result.stderr
+
 
 class TestLegacyCommands:
     """Tests for legacy/deprecated commands"""

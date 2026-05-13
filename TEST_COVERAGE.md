@@ -4,7 +4,7 @@
 
 - Unit test command: `uv run --extra dev pytest`
 - Coverage command: `uv run --extra dev pytest --cov=kubectl_smart --cov-report=term-missing`
-- Latest local result: `450 passed`
+- Latest local result: `452 passed`
 - Latest measured coverage: `84%`
 
 Coverage is measured, not estimated. The default `pytest` command does not enforce
@@ -45,7 +45,7 @@ coverage command above when working on test depth.
 - Batch resource listing validates namespace and context before spawning kubectl
 - Batch `--selector`/`-l` narrows resource listing before diagnosis
 - Batch text and JSON summaries preserve label selector scope
-- Explicit `--timeout` flows through single-resource diagnosis, watch mode,
+- Explicit `--timeout` flows through single-resource diagnosis, top, watch mode,
   batch resource listing, and batch per-resource collectors
 - Watch-state extraction for warning, critical, and unexpected exit codes,
   diagnosis-detail change detection, and data-gap appearance/resolution
