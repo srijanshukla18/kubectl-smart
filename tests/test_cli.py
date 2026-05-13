@@ -160,6 +160,30 @@ class TestDiagCommand:
         assert '"exit_code": 2' in result.stdout
         assert "Namespace must match DNS-1123" in result.stdout
 
+    def test_diag_json_invalid_resource_name_error_stays_json(self):
+        """Test invalid dotted resource names are rejected before kubectl."""
+        result = runner.invoke(
+            app,
+            ["diag", "pod", "api.bad!", "-o", "json"],
+        )
+
+        assert result.exit_code == 2
+        assert '"type": "error"' in result.stdout
+        assert '"exit_code": 2' in result.stdout
+        assert "Resource name must match Kubernetes DNS-1123" in result.stdout
+
+    @patch("kubectl_smart.cli.commands.DiagCommand.execute")
+    def test_diag_allows_valid_dotted_resource_name(self, mock_execute):
+        """Test valid DNS-subdomain style resource names are allowed."""
+        from kubectl_smart.cli.commands import CommandResult
+
+        mock_execute.return_value = CommandResult(output="Output", exit_code=0)
+
+        result = runner.invoke(app, ["diag", "pod", "api.v1"])
+
+        assert result.exit_code == 0
+        assert mock_execute.await_count == 1
+
     @patch("kubectl_smart.cli.commands.DiagCommand.execute_raw")
     def test_diag_json_error_stays_json(self, mock_execute_raw):
         """Test JSON diag emits machine-readable errors."""

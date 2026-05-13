@@ -78,6 +78,7 @@ class ResourceType(str, Enum):
 
 
 NAME_PATTERN = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
+RESOURCE_NAME_PATTERN = re.compile(r"^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$")
 CONTEXT_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 
@@ -89,9 +90,16 @@ def _validate_namespace(namespace: Optional[str]) -> None:
 
 
 def _validate_resource_name(name: str) -> None:
-    if len(name) > 253 or not NAME_PATTERN.fullmatch(name.split('.')[0]):
-        # Allow for pod.template hash with dots by checking prefix, but still guard obvious bad input
-        raise typer.BadParameter("Resource name must match Kubernetes DNS-1123 label (lowercase alphanumerics plus '-').")
+    labels = name.split(".")
+    if (
+        len(name) > 253
+        or not RESOURCE_NAME_PATTERN.fullmatch(name)
+        or any(not NAME_PATTERN.fullmatch(label) for label in labels)
+    ):
+        raise typer.BadParameter(
+            "Resource name must match Kubernetes DNS-1123 subdomain syntax "
+            "(lowercase alphanumerics, '-', and '.', with valid labels)."
+        )
 
 
 def _validate_context(context: Optional[str]) -> None:
