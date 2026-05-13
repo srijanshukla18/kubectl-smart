@@ -13,11 +13,11 @@ import asyncio
 import subprocess
 import time
 from dataclasses import dataclass, field
-from typing import List, Optional, Dict
+from typing import Optional
 
 import structlog
 
-from .models import SubjectCtx, ResourceKind, DiagnosisResult
+from .models import DiagnosisResult, ResourceKind, SubjectCtx
 
 logger = structlog.get_logger(__name__)  # type: ignore[attr-defined]
 
@@ -28,8 +28,8 @@ class BatchResult:
     total_resources: int
     successful: int
     failed: int
-    results: List[DiagnosisResult] = field(default_factory=list)
-    errors: List[Dict[str, str]] = field(default_factory=list)
+    results: list[DiagnosisResult] = field(default_factory=list)
+    errors: list[dict[str, str]] = field(default_factory=list)
     duration: float = 0.0
 
 
@@ -89,8 +89,8 @@ class BatchAnalyzer:
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # Process results
-        successful_results: List[DiagnosisResult] = []
-        errors: List[Dict[str, str]] = []
+        successful_results: list[DiagnosisResult] = []
+        errors: list[dict[str, str]] = []
 
         for i, result in enumerate(results):
             if isinstance(result, Exception):
@@ -118,7 +118,7 @@ class BatchAnalyzer:
         namespace: Optional[str],
         context: Optional[str],
         label_selector: Optional[str],
-    ) -> List[str]:
+    ) -> list[str]:
         """Get list of resource names"""
         # Map ResourceKind to kubectl resource type
         kind_to_kubectl = {
@@ -175,9 +175,6 @@ class BatchAnalyzer:
         """Diagnose a single resource with concurrency limiting"""
         async with self.semaphore:
             try:
-                # Lazy import to avoid circular dependency
-                from .cli.commands import DiagCommand
-
                 subject = SubjectCtx(
                     kind=kind,
                     name=name,
@@ -186,12 +183,6 @@ class BatchAnalyzer:
                     scope="resource",
                 )
 
-                command = DiagCommand()
-                result = await command.execute(subject)
-
-                # Extract DiagnosisResult from CommandResult
-                # The command returns a CommandResult, we need to re-run to get DiagnosisResult
-                # Actually, let's create a method that returns the DiagnosisResult directly
                 return await self._execute_diagnosis(subject)
 
             except Exception as e:
@@ -200,15 +191,11 @@ class BatchAnalyzer:
 
     async def _execute_diagnosis(self, subject: SubjectCtx) -> DiagnosisResult:
         """Execute diagnosis and return DiagnosisResult directly"""
-        from .cli.commands import DiagCommand, BaseCommand
         from .collectors.base import registry as collector_registry
-        from .parsers.base import registry as parser_registry
         from .graph.builder import GraphBuilder
+        from .parsers.base import registry as parser_registry
         from .scoring.engine import ScoringEngine
-        from .models import AnalysisConfig
-        import time
 
-        config = AnalysisConfig()
         graph_builder = GraphBuilder()
         scoring_engine = ScoringEngine()
 
