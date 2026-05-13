@@ -297,6 +297,29 @@ class TestKubectlLogs:
         blob = await collector.collect(subject)
         assert blob.data == {}
 
+    @pytest.mark.asyncio
+    async def test_kubectl_logs_success_records_target_metadata(self, monkeypatch):
+        """Test successful log blobs preserve the diagnosed Pod identity."""
+        collector = KubectlLogs()
+
+        async def fake_run_kubectl(args, subject, output_format="json"):
+            assert args == ["logs", "checkout-api-0", "--tail=100"]
+            assert output_format == ""
+            return {"raw": "panic: circuit breaker open"}
+
+        monkeypatch.setattr(collector, "_run_kubectl", fake_run_kubectl)
+
+        subject = SubjectCtx(
+            kind=ResourceKind.POD,
+            name="checkout-api-0",
+            namespace="default",
+        )
+        blob = await collector.collect(subject)
+
+        assert blob.metadata["target_kind"] == "Pod"
+        assert blob.metadata["target_name"] == "checkout-api-0"
+        assert blob.metadata["target_namespace"] == "default"
+
 
 class TestMetricsServer:
     """Tests for MetricsServer collector"""

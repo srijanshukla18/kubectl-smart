@@ -412,7 +412,15 @@ class KubectlLogs(Collector):
             
             args = ['logs', subject.name, f'--tail={self.tail_lines}']
             data = await self._run_kubectl(args, subject, output_format="")
-            return self._create_blob(data, "text/plain")
+            return self._create_blob(
+                data,
+                "text/plain",
+                {
+                    "target_kind": subject.kind.value,
+                    "target_name": subject.name,
+                    "target_namespace": subject.namespace,
+                },
+            )
             
         except Exception as e:
             logger.warning(

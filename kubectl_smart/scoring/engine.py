@@ -431,6 +431,25 @@ class ScoringEngine:
             evidence=[f"Log line: {line}" for line in errors[-3:]],
         )
 
+    def _target_pod_for_log_record(
+        self,
+        log_record: ResourceRecord,
+        resources: List[ResourceRecord],
+    ) -> Optional[ResourceRecord]:
+        target_name = log_record.properties.get('target_name')
+        target_namespace = log_record.properties.get('target_namespace')
+        target_kind = log_record.properties.get('target_kind', ResourceKind.POD.value)
+
+        if target_name and target_kind == ResourceKind.POD.value:
+            for resource in resources:
+                if resource.kind != ResourceKind.POD or resource.name != target_name:
+                    continue
+                if target_namespace and resource.namespace != target_namespace:
+                    continue
+                return resource
+
+        return next((r for r in resources if r.kind == ResourceKind.POD), None)
+
     def _get_age_multiplier(self, timestamp) -> float:
         """Get age-based score multiplier"""
         if not timestamp:
@@ -482,15 +501,12 @@ class ScoringEngine:
         issues = []
         resource_map = {r.uid: r for r in resources}
         
-        # Identify the primary target resource (heuristic: usually the one being diagnosed)
-        # In a list of resources, we often want to attach log issues to the "subject".
-        # For now, we'll attach log issues to the first Pod found, or if none, leave generic.
-        # A better way is if the caller passed the target, but we are inside the engine.
-        target_pod = next((r for r in resources if r.kind == ResourceKind.POD), None)
-        
         # Process LogAnalysis records
         for resource in resources:
-            if resource.kind == ResourceKind.LOGANALYSIS and target_pod:
+            if resource.kind == ResourceKind.LOGANALYSIS:
+                target_pod = self._target_pod_for_log_record(resource, resources)
+                if not target_pod:
+                    continue
                 log_issue = self.create_issue_from_logs(resource, target_pod)
                 if log_issue:
                     issues.append(log_issue)

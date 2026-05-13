@@ -391,13 +391,17 @@ class LogParser(Parser):
             properties = {
                 'errors': unique_errors,
                 'log_count': len(lines),
-                'error_count': len(unique_errors)
+                'error_count': len(unique_errors),
             }
+            for key in ("target_kind", "target_name", "target_namespace"):
+                if blob.metadata.get(key) is not None:
+                    properties[key] = blob.metadata[key]
             
             return [ResourceRecord(
                 kind=ResourceKind.LOGANALYSIS,
                 name="log-analysis",
                 uid=f"log-{datetime.utcnow().timestamp()}",
+                namespace=properties.get("target_namespace"),
                 properties=properties,
                 status="Analyzed"
             )]

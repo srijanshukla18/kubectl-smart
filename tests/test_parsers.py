@@ -477,6 +477,33 @@ class TestTextParser:
         assert resources == []
 
 
+class TestLogParser:
+    """Tests for LogParser"""
+
+    def test_feed_preserves_log_target_metadata(self):
+        """Test parsed log analysis keeps the Pod identity from the collector."""
+        parser = LogParser()
+        blob = RawBlob(
+            data={"raw": "panic: circuit breaker open"},
+            source="kubectl_logs",
+            content_type="text/plain",
+            metadata={
+                "target_kind": "Pod",
+                "target_name": "checkout-api-0",
+                "target_namespace": "default",
+            },
+        )
+
+        resources = parser.feed(blob)
+
+        assert len(resources) == 1
+        assert resources[0].kind == ResourceKind.LOGANALYSIS
+        assert resources[0].namespace == "default"
+        assert resources[0].properties["target_kind"] == "Pod"
+        assert resources[0].properties["target_name"] == "checkout-api-0"
+        assert resources[0].properties["target_namespace"] == "default"
+
+
 class TestMetricsParser:
     """Tests for MetricsParser"""
 

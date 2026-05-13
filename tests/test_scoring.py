@@ -357,6 +357,41 @@ class TestCreateIssueFromLogs:
         assert issue.score == 100.0
         assert "panic: circuit breaker open" in issue.evidence[0]
 
+    def test_analyze_issues_attaches_logs_to_metadata_target_pod(self):
+        """Test log analysis does not attach errors to the first unrelated Pod."""
+        engine = ScoringEngine()
+        unrelated = ResourceRecord(
+            kind=ResourceKind.POD,
+            name="frontend",
+            uid="frontend-uid",
+            namespace="default",
+            status="Running",
+        )
+        target = ResourceRecord(
+            kind=ResourceKind.POD,
+            name="checkout-api-0",
+            uid="checkout-uid",
+            namespace="default",
+            status="Running",
+        )
+        log_record = ResourceRecord(
+            kind=ResourceKind.LOGANALYSIS,
+            name="log-analysis",
+            uid="log-uid",
+            properties={
+                "errors": ["panic: circuit breaker open"],
+                "target_kind": "Pod",
+                "target_name": "checkout-api-0",
+                "target_namespace": "default",
+            },
+        )
+
+        issues = engine.analyze_issues([unrelated, target, log_record], [])
+
+        log_issues = [issue for issue in issues if issue.reason == "LogFailure"]
+        assert len(log_issues) == 1
+        assert log_issues[0].resource_uid == "checkout-uid"
+
 
 class TestAgeMultiplier:
     """Tests for age-based score multiplier"""
