@@ -132,7 +132,7 @@ class ResourceWatcher:
             # It's a CommandResult, need to parse state from it
             # For simplicity, we'll track based on exit code
             return WatchState(
-                status="healthy" if result.exit_code == 0 else "unhealthy",
+                status=self._status_from_exit_code(result.exit_code),
                 root_cause_title=None,
                 root_cause_score=0.0,
                 issue_count=0,
@@ -147,6 +147,16 @@ class ResourceWatcher:
             issue_count=len(result.issues),
             issue_titles=[i.title for i in result.issues],
         )
+
+    def _status_from_exit_code(self, exit_code: int) -> str:
+        """Map diagnosis exit codes to watch state labels."""
+        if exit_code == 0:
+            return "healthy"
+        if exit_code == 1:
+            return "warning"
+        if exit_code == 2:
+            return "critical_or_error"
+        return f"exit_{exit_code}"
 
     def _detect_changes(
         self,
