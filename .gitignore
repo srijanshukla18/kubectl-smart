@@ -39,3 +39,7 @@ htmlcov/
 
 # Logs
 *.log
+
+# Local demo cluster state
+.kubectl-smart-demo.kubeconfig
+.kubectl-smart-demo.kubeconfig.lock

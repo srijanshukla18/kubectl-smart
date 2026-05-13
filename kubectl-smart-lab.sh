@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Quick bootstrap for kubectl-smart demo scenarios on Minikube
+# Quick bootstrap for kubectl-smart demo scenarios on a local kind/minikube context.
 # Usage: ./kubectl-smart-lab.sh [apply|cleanup] [scenario]
 # Scenarios: base, network, graph, tls, pvc, taint, silent, links, config, all (default)
 
@@ -8,7 +8,11 @@ set -euo pipefail
 ACTION="${1:-apply}"
 SCENARIO="${2:-all}"
 NAMESPACE="${NAMESPACE:-kubectl-smart-lab}"
-PROFILE="${MINIKUBE_PROFILE:-minikube}"
+KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME:-kubectl-smart-demo}"
+KUBECTL_SMART_CONTEXT="${KUBECTL_SMART_CONTEXT:-kind-${KIND_CLUSTER_NAME}}"
+KUBECTL_SMART_KUBECONFIG="${KUBECTL_SMART_KUBECONFIG:-$PWD/.kubectl-smart-demo.kubeconfig}"
+SAFE_CONTEXT_PATTERN="${KUBECTL_SMART_SAFE_CONTEXT_PATTERN:-^(kind-|minikube$|colima$)}"
+REAL_KUBECTL="$(command -v kubectl || true)"
 
 log() { echo "[$(date +%H:%M:%S)] $*"; }
 
@@ -19,19 +23,49 @@ require_bin() {
   fi
 }
 
-ensure_minikube() {
-  if ! command -v minikube >/dev/null 2>&1; then
-    log "minikube not found; assuming existing kube-context is ready"
+guard_context() {
+  if [ -z "$REAL_KUBECTL" ]; then
+    echo "Missing required binary: kubectl" >&2
+    exit 1
+  fi
+  if ! [[ "$KUBECTL_SMART_CONTEXT" =~ $SAFE_CONTEXT_PATTERN ]]; then
+    echo "Refusing to use Kubernetes context '$KUBECTL_SMART_CONTEXT'." >&2
+    echo "Set KUBECTL_SMART_CONTEXT to a local context matching: $SAFE_CONTEXT_PATTERN" >&2
+    exit 1
+  fi
+  export KUBECTL_SMART_CONTEXT
+  export KUBECONFIG="$KUBECTL_SMART_KUBECONFIG"
+  log "Using Kubernetes context: $KUBECTL_SMART_CONTEXT"
+  log "Using kubeconfig: $KUBECONFIG"
+}
+
+kubectl() {
+  "$REAL_KUBECTL" --context "$KUBECTL_SMART_CONTEXT" "$@"
+}
+
+ensure_local_cluster() {
+  if [[ "$KUBECTL_SMART_CONTEXT" == kind-* ]]; then
+    require_bin kind
+    local cluster_name="${KUBECTL_SMART_CONTEXT#kind-}"
+    if ! kind get clusters 2>/dev/null | grep -qx "$cluster_name"; then
+      log "Creating local kind cluster ${cluster_name}..."
+      kind create cluster --name "$cluster_name" --kubeconfig "$KUBECONFIG"
+    else
+      kind export kubeconfig --name "$cluster_name" --kubeconfig "$KUBECONFIG" >/dev/null 2>&1
+    fi
     return
   fi
-  if ! minikube -p "$PROFILE" status >/dev/null 2>&1; then
-    log "Starting minikube profile ${PROFILE}..."
-    minikube -p "$PROFILE" start
+
+  if [[ "$KUBECTL_SMART_CONTEXT" == "minikube" ]] && command -v minikube >/dev/null 2>&1; then
+    if ! minikube status >/dev/null 2>&1; then
+      log "Starting local minikube profile..."
+      minikube start
+    fi
+    log "Enabling metrics-server addon (for top forecasts)..."
+    minikube addons enable metrics-server >/dev/null 2>&1 || true
+    log "Enabling ingress addon (for TLS scenario)..."
+    minikube addons enable ingress >/dev/null 2>&1 || true
   fi
-  log "Enabling metrics-server addon (for top forecasts)..."
-  minikube -p "$PROFILE" addons enable metrics-server >/dev/null 2>&1 || true
-  log "Enabling ingress addon (for TLS scenario)..."
-  minikube -p "$PROFILE" addons enable ingress >/dev/null 2>&1 || true
 }
 
 ensure_namespace() {
@@ -41,6 +75,10 @@ ensure_namespace() {
   else
     log "Namespace $NAMESPACE already exists"
   fi
+}
+
+clear_lab_taint() {
+  kubectl taint node --all smart-lab=diskpressure:NoSchedule- >/dev/null 2>&1 || true
 }
 
 apply_base_failures() {
@@ -394,6 +432,7 @@ EOF
 apply_taint_and_unschedulable() {
   NODE=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
   log "Applying taint smart-lab=diskpressure:NoSchedule on node ${NODE}..."
+  kubectl delete pod taint-intolerant -n "$NAMESPACE" --ignore-not-found --grace-period=0 --force >/dev/null 2>&1 || true
   kubectl taint node "${NODE}" smart-lab=diskpressure:NoSchedule --overwrite || true
   cat <<EOF | kubectl apply -n "$NAMESPACE" -f - 
 apiVersion: v1
@@ -412,7 +451,7 @@ EOF
 
 apply_silent_failures() {
   log "Applying silent failures (Readiness Probe fail & OOMKilled)..."
-  cat <<EOF | kubectl apply -n "$NAMESPACE" -f - 
+  cat <<'EOF' | kubectl apply -n "$NAMESPACE" -f -
 apiVersion: v1
 kind: Pod
 metadata:
@@ -517,8 +556,13 @@ EOF
 }
 
 cleanup() {
+  if [ ! -f "$KUBECONFIG" ]; then
+    log "No repo-local kubeconfig found at ${KUBECONFIG}; nothing to clean up."
+    return
+  fi
+
   log "Removing namespace ${NAMESPACE} and taints..."
-  kubectl delete ns "$NAMESPACE" --ignore-not-found
+  kubectl delete ns "$NAMESPACE" --ignore-not-found || true
   kubectl taint node --all smart-lab=diskpressure:NoSchedule- >/dev/null 2>&1 || true
   log "Cleanup complete"
 }
@@ -540,10 +584,10 @@ run_scenario() {
       apply_graph_chain
       apply_cert_and_ingress
       apply_pvc_pressure
-      apply_taint_and_unschedulable
       apply_silent_failures
       apply_broken_links
       apply_missing_config
+      apply_taint_and_unschedulable
       ;; 
     *)
       echo "Unknown scenario: $1"
@@ -554,13 +598,15 @@ run_scenario() {
 
 case "$ACTION" in
   apply|setup)
-    require_bin kubectl
-    ensure_minikube
+    guard_context
+    ensure_local_cluster
     ensure_namespace
+    clear_lab_taint
     run_scenario "$SCENARIO"
-    log "Scenarios applied. Use 'kubectl get pods -n $NAMESPACE' to check status."
+    log "Scenarios applied. Use 'kubectl --context $KUBECTL_SMART_CONTEXT get pods -n $NAMESPACE' to check status."
     ;; 
   cleanup|destroy)
+    guard_context
     cleanup
     ;; 
   *)

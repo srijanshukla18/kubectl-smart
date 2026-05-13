@@ -14,6 +14,7 @@ from kubectl_smart.cli.commands import (
 )
 from kubectl_smart.models import (
     AnalysisConfig,
+    RawBlob,
     ResourceKind,
     ResourceRecord,
     SubjectCtx,
@@ -107,6 +108,63 @@ class TestDiagCommand:
 
         assert result.exit_code == 0
         assert "DIAGNOSIS" in result.output
+
+    @pytest.mark.asyncio
+    @patch("kubectl_smart.cli.commands.collector_registry")
+    @patch("kubectl_smart.cli.commands.parser_registry")
+    async def test_execute_surfaces_data_gaps(
+        self, mock_parser_registry, mock_collector_registry
+    ):
+        """Test unavailable collectors are shown as data gaps."""
+        pod = ResourceRecord(
+            kind=ResourceKind.POD,
+            name="api",
+            uid="pod-uid-123",
+            namespace="default",
+            status="Running",
+        )
+        get_blob = RawBlob(data={}, source="kubectl_get", content_type="application/json")
+        describe_blob = RawBlob(data={}, source="kubectl_describe", content_type="text/plain")
+        events_blob = RawBlob(data={}, source="kubectl_events", content_type="application/json")
+        logs_blob = RawBlob(
+            data={},
+            source="kubectl_logs",
+            content_type="text/plain",
+            metadata={
+                "data_gap": True,
+                "collector": "kubectl_logs",
+                "operation": "logs",
+                "resource_type": "pods",
+                "category": "rbac",
+                "error": "RBAC permission denied: User cannot get pods/log",
+                "suggested_action": "kubectl auth can-i get pods --subresource=log -n default",
+            },
+        )
+
+        collectors = []
+        for blob in [get_blob, describe_blob, events_blob, logs_blob]:
+            collector = MagicMock()
+            collector.name = blob.source
+            collector.collect = AsyncMock(return_value=blob)
+            collectors.append(collector)
+
+        mock_collector_registry.create.side_effect = collectors
+
+        def parse_blob(blob):
+            if blob is get_blob:
+                return [pod]
+            return []
+
+        mock_parser_registry.parse.side_effect = parse_blob
+
+        cmd = DiagCommand()
+        subject = SubjectCtx(kind=ResourceKind.POD, name="api", namespace="default")
+        result = await cmd.execute(subject)
+
+        assert result.exit_code == 0
+        assert "DATA GAPS" in result.output
+        assert "logs pods unavailable (rbac)" in result.output
+        assert "kubectl auth can-i get pods --subresource=log -n default" in result.output
 
     @pytest.mark.asyncio
     @patch("kubectl_smart.cli.commands.collector_registry")
@@ -227,6 +285,115 @@ class TestDiagCommand:
 
         assert any("image" in action.lower() for action in actions)
 
+    def test_generate_suggested_actions_missing_secret(self):
+        """Test missing Secret references get direct actions instead of log advice."""
+        from kubectl_smart.models import Issue, IssueSeverity
+
+        cmd = DiagCommand()
+        resource = ResourceRecord(
+            kind=ResourceKind.POD,
+            name="pod",
+            uid="uid-123",
+            namespace="default",
+            status="Pending",
+        )
+        root_cause = Issue(
+            resource_uid="uid-123",
+            title="Failed",
+            description='Error: secret "runtime-token" not found',
+            severity=IssueSeverity.CRITICAL,
+            score=100.0,
+            reason="Failed",
+            message='Error: secret "runtime-token" not found',
+        )
+        actions = cmd._generate_suggested_actions(resource, root_cause, [])
+
+        assert actions[0] == "Verify missing Secret: kubectl get secret runtime-token -n default"
+        assert any("Create or restore Secret runtime-token" in action for action in actions)
+        assert not any("kubectl logs" in action for action in actions)
+
+    def test_generate_suggested_actions_log_failure(self):
+        """Test log-derived root causes carry log review actions."""
+        from kubectl_smart.models import Issue, IssueSeverity
+
+        cmd = DiagCommand()
+        resource = ResourceRecord(
+            kind=ResourceKind.POD,
+            name="pod",
+            uid="uid-123",
+            namespace="default",
+            status="Running",
+        )
+        root_cause = Issue(
+            resource_uid="uid-123",
+            title="Log Errors",
+            description="panic detected",
+            severity=IssueSeverity.CRITICAL,
+            score=100.0,
+            reason="LogFailure",
+            message="panic: circuit breaker open",
+            suggested_actions=["Review full logs for context"],
+        )
+        actions = cmd._generate_suggested_actions(resource, root_cause, [])
+
+        assert "Review full logs for context" in actions
+
+    @pytest.mark.asyncio
+    @patch("kubectl_smart.cli.commands.collector_registry")
+    @patch("kubectl_smart.cli.commands.parser_registry")
+    async def test_execute_service_with_empty_endpoints(
+        self, mock_parser_registry, mock_collector_registry
+    ):
+        """Test DiagCommand turns empty Endpoints into a Service issue."""
+        service = ResourceRecord(
+            kind=ResourceKind.SERVICE,
+            name="inventory",
+            uid="svc-uid",
+            namespace="default",
+            status="Active",
+            properties={"spec": {"selector": {"app": "inventory", "tier": "primary"}}},
+        )
+        endpoints = ResourceRecord(
+            kind=ResourceKind.ENDPOINTS,
+            name="inventory",
+            uid="endpoints-uid",
+            namespace="default",
+            status="Unavailable",
+            properties={"subsets": []},
+        )
+        canary_pod = ResourceRecord(
+            kind=ResourceKind.POD,
+            name="inventory-canary",
+            uid="pod-uid",
+            namespace="default",
+            status="Running",
+            labels={"app": "inventory", "track": "canary"},
+        )
+
+        mock_collector = MagicMock()
+        mock_collector.collect = AsyncMock(return_value=MagicMock(data={}, source="test"))
+        mock_collector_registry.create.return_value = mock_collector
+        mock_parser_registry.parse.side_effect = [
+            [service],
+            [],
+            [],
+            [],
+            [endpoints],
+            [canary_pod],
+        ]
+
+        cmd = DiagCommand()
+        subject = SubjectCtx(
+            kind=ResourceKind.SERVICE, name="inventory", namespace="default"
+        )
+        result = await cmd.execute(subject)
+
+        assert result.exit_code == 2
+        assert "Service has no ready endpoints" in result.output
+        assert "Evidence" in result.output
+        assert "ready addresses=0" in result.output
+        assert "No Pods in namespace match selector app=inventory,tier=primary" in result.output
+
 
 class TestGraphCommand:
     """Tests for GraphCommand class"""
@@ -284,6 +451,67 @@ class TestGraphCommand:
     @pytest.mark.asyncio
     @patch("kubectl_smart.cli.commands.collector_registry")
     @patch("kubectl_smart.cli.commands.parser_registry")
+    async def test_execute_collects_related_resource_types(
+        self, mock_parser_registry, mock_collector_registry
+    ):
+        """Test GraphCommand collects enough resource types to build live edges."""
+        deployment = ResourceRecord(
+            kind=ResourceKind.DEPLOYMENT,
+            name="frontend",
+            uid="deploy-uid",
+            namespace="default",
+            status="Available",
+        )
+        replicaset = ResourceRecord(
+            kind=ResourceKind.REPLICASET,
+            name="frontend-rs",
+            uid="rs-uid",
+            namespace="default",
+            properties={
+                "metadata": {
+                    "ownerReferences": [
+                        {"kind": "Deployment", "uid": "deploy-uid"}
+                    ]
+                }
+            },
+        )
+        pod = ResourceRecord(
+            kind=ResourceKind.POD,
+            name="frontend-pod",
+            uid="pod-uid",
+            namespace="default",
+            properties={
+                "metadata": {
+                    "ownerReferences": [
+                        {"kind": "ReplicaSet", "uid": "rs-uid"}
+                    ]
+                }
+            },
+        )
+
+        mock_collector = MagicMock()
+        mock_collector.name = "test"
+        mock_collector.collect = AsyncMock(return_value=MagicMock(data={}, source="test"))
+        mock_collector_registry.create.return_value = mock_collector
+        mock_parser_registry.parse.return_value = [deployment, replicaset, pod]
+
+        cmd = GraphCommand()
+        subject = SubjectCtx(
+            kind=ResourceKind.DEPLOYMENT, name="frontend", namespace="default"
+        )
+        result = await cmd.execute(subject, direction="downstream")
+
+        assert result.exit_code == 0
+        assert "ReplicaSet/default/frontend-rs" in result.output
+        requested_types = {
+            call.kwargs["resource_type"]
+            for call in mock_collector_registry.create.call_args_list
+        }
+        assert {"pods", "deployments", "replicasets", "services", "nodes"} <= requested_types
+
+    @pytest.mark.asyncio
+    @patch("kubectl_smart.cli.commands.collector_registry")
+    @patch("kubectl_smart.cli.commands.parser_registry")
     async def test_execute_upstream_direction(
         self, mock_parser_registry, mock_collector_registry
     ):
@@ -308,6 +536,36 @@ class TestGraphCommand:
         result = await cmd.execute(subject, direction="upstream")
 
         assert result.exit_code == 0
+
+    @pytest.mark.asyncio
+    @patch("kubectl_smart.cli.commands.collector_registry")
+    @patch("kubectl_smart.cli.commands.parser_registry")
+    async def test_execute_both_directions(
+        self, mock_parser_registry, mock_collector_registry
+    ):
+        """Test GraphCommand renders both directions when requested."""
+        pod = ResourceRecord(
+            kind=ResourceKind.POD,
+            name="test-pod",
+            uid="pod-uid-123",
+            namespace="default",
+            status="Running",
+        )
+
+        mock_collector = MagicMock()
+        mock_collector.collect = AsyncMock(return_value=MagicMock(data={}, source="test"))
+        mock_collector_registry.create.return_value = mock_collector
+        mock_parser_registry.parse.return_value = [pod]
+
+        cmd = GraphCommand()
+        subject = SubjectCtx(
+            kind=ResourceKind.POD, name="test-pod", namespace="default"
+        )
+        result = await cmd.execute(subject, direction="both")
+
+        assert result.exit_code == 0
+        assert "UPSTREAM DEPENDENCIES" in result.output
+        assert "DOWNSTREAM DEPENDENCIES" in result.output
 
 
 class TestTopCommand:

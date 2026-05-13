@@ -41,6 +41,9 @@ kubectl-smart diag pod failing-app-xyz -n production
 
 # Diagnose with specific context
 kubectl-smart diag pod failing-app-xyz -n staging --context=staging-cluster
+
+# For local demos/tests, set a default context once
+export KUBECTL_SMART_CONTEXT=kind-kubectl-smart-demo
 ```
 
 **Sample Output:**
@@ -48,9 +51,11 @@ kubectl-smart diag pod failing-app-xyz -n staging --context=staging-cluster
 📋 DIAGNOSIS: Pod/production/failing-app-xyz
 Status: CrashLoopBackOff
 
-🔴 ROOT CAUSE
+🔴 LIKELY ROOT CAUSE
   💥 CrashLoopBackOff: failing-app-xyz (score: 85.0)
     Container exits immediately after start, in restart loop
+    Evidence:
+    • Event Warning/BackOff: Back-off restarting failed container
 
 🟡 CONTRIBUTING FACTORS
   ⚠️ ImagePullBackOff: failing-app-xyz (score: 75.0)
@@ -355,7 +360,7 @@ kubectl-smart top api --horizon=6
 # Monthly certificate audit (human-readable)
 for ns in production staging development; do
     echo "=== $ns ==="
-    kubectl-smart top "$ns" --horizon=720  # 30 days
+    kubectl-smart top "$ns" --horizon=168  # 7 days (max)
 done
 ```
 
@@ -399,6 +404,10 @@ fi
 kubectl-smart diag pod my-pod --context=production-cluster
 kubectl-smart graph svc my-svc --context=staging-cluster  
 kubectl-smart top default --context=dev-cluster
+
+# Or pin a default context for repeated local demo/test commands
+export KUBECTL_SMART_CONTEXT=kind-kubectl-smart-demo
+kubectl-smart diag pod my-pod -n default
 
 # Combine with namespace
 kubectl-smart diag pod api-pod -n api --context=prod-east
@@ -513,7 +522,7 @@ done
 # cert-monitor.sh - Quick scan across all namespaces (human-readable)
 
 for ns in $(kubectl get namespaces -o name | cut -d'/' -f2); do
-  out=$(kubectl-smart top "$ns" --horizon=336 2>/dev/null)
+  out=$(kubectl-smart top "$ns" --horizon=168 2>/dev/null)
   if echo "$out" | grep -q "CERTIFICATE WARNINGS"; then
     echo "=== $ns ==="
     echo "$out" | sed -n '/CERTIFICATE WARNINGS/,$p' | sed -n '1,10p'
@@ -547,14 +556,14 @@ kubectl-smart diag pod my-pod  # Will show what it can access
 
 **2. Context Issues**
 ```bash
-# Check current context
+# Check current context before running kubectl directly
 kubectl config current-context
 
 # List available contexts
 kubectl config get-contexts
 
-# Switch context
-kubectl config use-context minikube
+# For demos, prefer explicit contexts over switching global state
+export KUBECTL_SMART_CONTEXT=kind-kubectl-smart-demo
 ```
 
 **3. Slow Performance**
@@ -596,13 +605,12 @@ fi
 
 ## 📊 Performance Characteristics
 
-kubectl-smart is designed for production use with these performance guarantees:
+kubectl-smart is designed for production use with bounded, read-only collection:
 
-- **Startup time**: ~0.8s (help/version commands)
-- **Execution time**: ≤3s on 2k-resource clusters
-- **Memory usage**: <100MB
-- **Network calls**: Minimized with intelligent caching
-- **Read-only operations**: Never modifies your cluster
+- **Startup path**: lazy imports keep help/version commands lightweight
+- **Execution path**: collectors run asynchronously with per-command timeouts
+- **Network calls**: limited to kubectl read operations and optional metrics sources
+- **Read-only operations**: never modifies your cluster
 
 ### Performance Testing
 

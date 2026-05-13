@@ -319,7 +319,9 @@ class ForecastingEngine:
                     cert = x509.load_pem_x509_certificate(pem, default_backend())
                 except ValueError:
                     cert = x509.load_der_x509_certificate(pem, default_backend())
-                expiry_date = cert.not_valid_after.replace(tzinfo=timezone.utc)
+                expiry_date = getattr(cert, 'not_valid_after_utc', None)
+                if expiry_date is None:
+                    expiry_date = cert.not_valid_after.replace(tzinfo=timezone.utc)
                 days_until_expiry = (expiry_date - datetime.now(timezone.utc)).days
                 if days_until_expiry <= 14:
                     warnings.append({

@@ -250,6 +250,126 @@ class TestGraphBuilderRelationships:
         deps = builder.get_dependencies(pod.uid, "upstream")
         assert sa.uid in deps
 
+    def test_extract_pod_env_config_and_secret_relationships(self):
+        """Test Pod env/envFrom references to ConfigMaps and Secrets."""
+        builder = GraphBuilder()
+        cm = ResourceRecord(
+            kind=ResourceKind.CONFIGMAP,
+            name="app-config",
+            uid="cm-uid-123",
+            namespace="default",
+        )
+        secret = ResourceRecord(
+            kind=ResourceKind.SECRET,
+            name="runtime-secret",
+            uid="secret-uid-123",
+            namespace="default",
+        )
+        pod = ResourceRecord(
+            kind=ResourceKind.POD,
+            name="test-pod",
+            uid="pod-uid-123",
+            namespace="default",
+            properties={
+                "spec": {
+                    "containers": [
+                        {
+                            "name": "app",
+                            "envFrom": [
+                                {"configMapRef": {"name": "app-config"}},
+                            ],
+                            "env": [
+                                {
+                                    "name": "TOKEN",
+                                    "valueFrom": {
+                                        "secretKeyRef": {
+                                            "name": "runtime-secret",
+                                            "key": "token",
+                                        }
+                                    },
+                                }
+                            ],
+                        }
+                    ]
+                }
+            },
+        )
+        builder.add_resources([cm, secret, pod])
+
+        deps = builder.get_dependencies(pod.uid, "upstream")
+        assert cm.uid in deps
+        assert secret.uid in deps
+
+    def test_extract_pod_missing_required_env_secret_relationship(self):
+        """Test missing required env Secrets are visible as red dependency nodes."""
+        builder = GraphBuilder()
+        pod = ResourceRecord(
+            kind=ResourceKind.POD,
+            name="test-pod",
+            uid="pod-uid-123",
+            namespace="default",
+            properties={
+                "spec": {
+                    "containers": [
+                        {
+                            "name": "app",
+                            "env": [
+                                {
+                                    "name": "TOKEN",
+                                    "valueFrom": {
+                                        "secretKeyRef": {
+                                            "name": "runtime-secret",
+                                            "key": "token",
+                                        }
+                                    },
+                                }
+                            ],
+                        }
+                    ]
+                }
+            },
+        )
+        builder.add_resources([pod])
+
+        deps = builder.get_dependencies(pod.uid, "upstream")
+        assert len(deps) == 1
+        missing = builder.resources[deps[0]]
+        assert missing.kind == ResourceKind.SECRET
+        assert missing.name == "runtime-secret"
+        assert missing.status == "Missing"
+        assert missing.properties["missing"] is True
+        assert "🔴 Secret/default/runtime-secret" in builder.to_ascii(pod.uid, "upstream")
+
+    def test_extract_pod_optional_missing_env_secret_not_added(self):
+        """Test optional missing env Secrets do not produce false red nodes."""
+        builder = GraphBuilder()
+        pod = ResourceRecord(
+            kind=ResourceKind.POD,
+            name="test-pod",
+            uid="pod-uid-123",
+            namespace="default",
+            properties={
+                "spec": {
+                    "containers": [
+                        {
+                            "name": "app",
+                            "envFrom": [
+                                {
+                                    "secretRef": {
+                                        "name": "optional-secret",
+                                        "optional": True,
+                                    }
+                                }
+                            ],
+                        }
+                    ]
+                }
+            },
+        )
+        builder.add_resources([pod])
+
+        assert builder.get_dependencies(pod.uid, "upstream") == []
+
     def test_extract_deployment_replicaset_relationship(self):
         """Test Deployment owns ReplicaSet relationship"""
         builder = GraphBuilder()
@@ -326,6 +446,117 @@ class TestGraphBuilderRelationships:
 
         pod_dependents = builder.get_dependencies(pod.uid, "downstream")
         assert svc.uid in pod_dependents
+
+    def test_extract_service_endpoints_relationship(self):
+        """Test Service resolves through an Endpoints object."""
+        builder = GraphBuilder()
+        svc = ResourceRecord(
+            kind=ResourceKind.SERVICE,
+            name="api",
+            uid="svc-uid-123",
+            namespace="default",
+            properties={"spec": {"selector": {"app": "api"}}},
+        )
+        endpoints = ResourceRecord(
+            kind=ResourceKind.ENDPOINTS,
+            name="api",
+            uid="endpoints-uid-123",
+            namespace="default",
+            status="Unavailable",
+        )
+        builder.add_resources([svc, endpoints])
+
+        deps = builder.get_dependencies(svc.uid, "upstream")
+        assert endpoints.uid in deps
+
+        dependents = builder.get_dependencies(endpoints.uid, "downstream")
+        assert svc.uid in dependents
+
+    def test_extract_ingress_service_and_tls_relationships(self):
+        """Test Ingress routes to Services and uses TLS Secrets."""
+        builder = GraphBuilder()
+        service = ResourceRecord(
+            kind=ResourceKind.SERVICE,
+            name="checkout",
+            uid="svc-uid-123",
+            namespace="default",
+        )
+        secret = ResourceRecord(
+            kind=ResourceKind.SECRET,
+            name="checkout-tls",
+            uid="secret-uid-123",
+            namespace="default",
+        )
+        ingress = ResourceRecord(
+            kind=ResourceKind.INGRESS,
+            name="checkout",
+            uid="ingress-uid-123",
+            namespace="default",
+            properties={
+                "spec": {
+                    "tls": [{"secretName": "checkout-tls"}],
+                    "rules": [
+                        {
+                            "http": {
+                                "paths": [
+                                    {
+                                        "backend": {
+                                            "service": {
+                                                "name": "checkout",
+                                                "port": {"number": 80},
+                                            }
+                                        }
+                                    }
+                                ]
+                            }
+                        }
+                    ],
+                }
+            },
+        )
+        builder.add_resources([service, secret, ingress])
+
+        deps = builder.get_dependencies(ingress.uid, "upstream")
+        assert service.uid in deps
+        assert secret.uid in deps
+
+    def test_extract_ingress_missing_backend_service_relationship(self):
+        """Test missing Ingress backend Services are visible as red dependency nodes."""
+        builder = GraphBuilder()
+        ingress = ResourceRecord(
+            kind=ResourceKind.INGRESS,
+            name="checkout",
+            uid="ingress-uid-123",
+            namespace="default",
+            properties={
+                "spec": {
+                    "rules": [
+                        {
+                            "http": {
+                                "paths": [
+                                    {
+                                        "backend": {
+                                            "service": {
+                                                "name": "missing-checkout",
+                                                "port": {"number": 80},
+                                            }
+                                        }
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                }
+            },
+        )
+        builder.add_resources([ingress])
+
+        deps = builder.get_dependencies(ingress.uid, "upstream")
+        assert len(deps) == 1
+        missing = builder.resources[deps[0]]
+        assert missing.kind == ResourceKind.SERVICE
+        assert missing.name == "missing-checkout"
+        assert missing.status == "Missing"
 
     def test_extract_pvc_pv_relationship(self):
         """Test PVC binds-to PV relationship"""

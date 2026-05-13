@@ -49,13 +49,6 @@ fi
 echo "📦 Installing kubectl-smart globally from current code..."
 uv tool install . --force
 
-# Explicitly copy weights.toml to ensure the correct version is used
-mkdir -p "$(uv tool dir)/kubectl-smart/kubectl_smart" && cp ./kubectl_smart/weights.toml "$(uv tool dir)/kubectl-smart/kubectl_smart/weights.toml"
-
-mkdir -p "$(uv tool dir)/kubectl-smart/kubectl_smart/cli" && cp ./kubectl_smart/cli/commands.py "$(uv tool dir)/kubectl-smart/kubectl_smart/cli/commands.py"
-
-mkdir -p "$(uv tool dir)/kubectl-smart/kubectl_smart/renderers" && cp ./kubectl_smart/renderers/terminal.py "$(uv tool dir)/kubectl-smart/kubectl_smart/renderers/terminal.py"
-
 # Verify installation
 if command -v kubectl-smart &> /dev/null; then
     echo "✅ Installation successful!"

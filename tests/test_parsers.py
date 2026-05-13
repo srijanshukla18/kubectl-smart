@@ -200,6 +200,32 @@ class TestKubernetesResourceParser:
         resources = parser.feed(blob)
         assert resources[0].status == "Running"
 
+    def test_extract_pod_waiting_container_status(self, sample_pod_json):
+        """Test Pod status prefers container waiting reason over phase."""
+        parser = KubernetesResourceParser()
+        sample_pod_json["status"] = {
+            "phase": "Running",
+            "containerStatuses": [
+                {
+                    "name": "api",
+                    "state": {
+                        "waiting": {
+                            "reason": "CrashLoopBackOff",
+                            "message": "back-off restarting failed container",
+                        }
+                    },
+                }
+            ],
+        }
+        blob = RawBlob(
+            data=sample_pod_json,
+            source="kubectl_get",
+            content_type="application/json",
+        )
+        resources = parser.feed(blob)
+
+        assert resources[0].status == "CrashLoopBackOff"
+
     def test_extract_node_status(self, sample_node_json):
         """Test Node status extraction"""
         parser = KubernetesResourceParser()
@@ -255,6 +281,47 @@ class TestKubernetesResourceParser:
         )
         resources = parser.feed(blob)
         assert resources[0].status == "Active"
+
+    def test_extract_empty_endpoints_status(self):
+        """Test empty Endpoints are marked unavailable for service diagnosis."""
+        parser = KubernetesResourceParser()
+        blob = RawBlob(
+            data={
+                "kind": "Endpoints",
+                "metadata": {
+                    "name": "api",
+                    "namespace": "default",
+                    "uid": "endpoints-uid",
+                },
+                "subsets": [],
+            },
+            source="kubectl_get",
+            content_type="application/json",
+        )
+        resources = parser.feed(blob)
+        assert resources[0].kind == ResourceKind.ENDPOINTS
+        assert resources[0].status == "Unavailable"
+        assert resources[0].properties["subsets"] == []
+
+    def test_extract_ready_endpoints_status(self):
+        """Test Endpoints with addresses are active."""
+        parser = KubernetesResourceParser()
+        blob = RawBlob(
+            data={
+                "kind": "Endpoints",
+                "metadata": {
+                    "name": "api",
+                    "namespace": "default",
+                    "uid": "endpoints-uid",
+                },
+                "subsets": [{"addresses": [{"ip": "10.0.0.10"}]}],
+            },
+            source="kubectl_get",
+            content_type="application/json",
+        )
+        resources = parser.feed(blob)
+        assert resources[0].status == "Active"
+        assert resources[0].properties["subsets"] == [{"addresses": [{"ip": "10.0.0.10"}]}]
 
     def test_extract_job_complete_status(self):
         """Test Job Complete status extraction"""
@@ -355,6 +422,7 @@ class TestEventParser:
         assert event.properties["message"] == "Container failed to start"
         assert event.properties["type"] == "Warning"
         assert event.properties["count"] == 3
+        assert event.creation_timestamp.isoformat() == "2024-01-01T12:05:00+00:00"
 
     def test_feed_event_without_uid_skipped(self):
         """Test events without UID are skipped"""

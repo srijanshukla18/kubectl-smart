@@ -333,6 +333,33 @@ class TestCreateIssueFromResourceStatus:
         assert issue.severity == IssueSeverity.INFO
 
 
+class TestCreateIssueFromLogs:
+    """Tests for create_issue_from_logs method."""
+
+    def test_create_issue_from_logs_escalates_hard_failures(self):
+        """Test panic/fatal style log evidence can outrank a BackOff symptom."""
+        engine = ScoringEngine()
+        log_record = ResourceRecord(
+            kind=ResourceKind.LOGANALYSIS,
+            name="log-analysis",
+            uid="log-uid",
+            properties={"errors": ["panic: circuit breaker open"]},
+        )
+        target = ResourceRecord(
+            kind=ResourceKind.POD,
+            name="checkout-api-0",
+            uid="pod-uid",
+            namespace="default",
+        )
+
+        issue = engine.create_issue_from_logs(log_record, target)
+
+        assert issue is not None
+        assert issue.severity == IssueSeverity.CRITICAL
+        assert issue.score == 100.0
+        assert "panic: circuit breaker open" in issue.evidence[0]
+
+
 class TestAgeMultiplier:
     """Tests for age-based score multiplier"""
 
@@ -418,6 +445,8 @@ class TestAnalyzeIssues:
 
         issues = engine.analyze_issues([pod], [event])
         assert len(issues) >= 1
+        assert issues[0].evidence
+        assert "Event Warning/FailedMount" in issues[0].evidence[0]
 
     def test_analyze_issues_from_resource_status(self):
         """Test analyzing issues from resource status"""
@@ -428,11 +457,27 @@ class TestAnalyzeIssues:
             uid="pod-uid-123",
             namespace="default",
             status="Failed",
+            properties={
+                "status": {
+                    "containerStatuses": [
+                        {
+                            "name": "app",
+                            "state": {
+                                "waiting": {
+                                    "reason": "CreateContainerConfigError",
+                                    "message": 'secret "token" not found',
+                                }
+                            },
+                        }
+                    ]
+                }
+            },
         )
 
         issues = engine.analyze_issues([failed_pod], [])
         assert len(issues) >= 1
         assert any(i.resource_uid == failed_pod.uid for i in issues)
+        assert any("CreateContainerConfigError" in line for line in issues[0].evidence)
 
     def test_analyze_issues_sorted_by_severity(self):
         """Test issues are sorted by severity and score"""
@@ -457,8 +502,13 @@ class TestAnalyzeIssues:
         issues = engine.analyze_issues(resources, [])
         # Issues should be sorted by severity
         if len(issues) >= 2:
-            first_severity = issues[0].severity.value
-            assert first_severity in ["critical", "warning"]
+            severity_rank = {
+                IssueSeverity.CRITICAL: 0,
+                IssueSeverity.WARNING: 1,
+                IssueSeverity.INFO: 2,
+            }
+            assert issues[0].severity == IssueSeverity.CRITICAL
+            assert severity_rank[issues[0].severity] <= severity_rank[issues[1].severity]
 
     def test_analyze_issues_with_graph(self):
         """Test analyzing issues with dependency graph"""

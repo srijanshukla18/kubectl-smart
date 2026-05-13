@@ -35,12 +35,13 @@ kubectl-smart diag pod --all -n production
 ```
 **Purpose**: One-shot diagnosis that surfaces root cause and contributing factors
 
-Supported resource types: `pod`, `deploy`, `sts`, `job`, `svc`, `rs`, `ds`.
+Supported resource types: `pod`, `deploy`/`deployment`, `sts`/`statefulset`, `job`, `svc`/`service`, `rs`/`replicaset`, `ds`/`daemonset`.
 
 Output and modes:
 - Text output is the default; `-o json` is available for automation.
 - `--watch` reruns diagnosis on an interval for a single resource.
 - `--all` diagnoses every resource of the selected type in the namespace/current context.
+- `--context` pins the kubectl context. For repeatable local demos/tests, you can also set `KUBECTL_SMART_CONTEXT=kind-kubectl-smart-demo`.
 - Exit code is `0` when no warning or critical issues are found, and `2` when issues or command errors are found.
 
 ### 2. `graph` - Dependency Visualization
@@ -53,6 +54,7 @@ kubectl-smart graph deploy checkout --downstream
 Direction semantics:
 - `--upstream` shows what the target depends on, such as a Pod's PVCs, ConfigMaps, Secrets, ServiceAccount, and Node.
 - `--downstream` shows resources impacted by the target, such as Pods owned by a Deployment/ReplicaSet or selected by a Service.
+- Passing both flags shows both sections in one output.
 - If neither flag is provided, `graph` defaults to downstream.
 
 ### 3. `top` - Predictive Outlook
@@ -82,9 +84,11 @@ Below are sample, outputs so you can see how kubectl-smart renders information.
 📋 DIAGNOSIS: Pod/production/failing-app-xyz
 Status: CrashLoopBackOff
 
-🔴 ROOT CAUSE
+🔴 LIKELY ROOT CAUSE
   💥 Log Errors: Found 3 error(s) (score: 95.0)
     Log analysis detected 3 unique error patterns. Recent: panic: database connection refused
+    Evidence:
+    • Log line: panic: database connection refused
 
 🟡 CONTRIBUTING FACTORS
   ⚠️ CrashLoopBackOff: failing-app-xyz (score: 85.0)
@@ -161,7 +165,15 @@ The implementation features:
 ## 🧪 Testing
 
 ```bash
-# Run test suite
+# Run unit tests
+uv run --extra dev pytest
+
+# Optional: run coverage
+uv run --extra dev pytest --cov=kubectl_smart --cov-report=term-missing
+
+# Optional: run Kubernetes scenario tests against an explicit local context
+export KUBECTL_SMART_CONTEXT=kind-kubectl-smart-demo
+./kubectl-smart-lab.sh apply all
 ./test.sh
 
 # Test individual commands
@@ -169,6 +181,10 @@ kubectl-smart --help
 kubectl-smart diag --help
 kubectl-smart --version
 ```
+
+Local demo safety:
+- `kubectl-smart-lab.sh`, `test-setup-minikube.sh`, and `test.sh` refuse to run unless `KUBECTL_SMART_CONTEXT` matches a local context pattern: `kind-*`, `minikube`, or `colima`.
+- The CLI also honors `KUBECTL_SMART_CONTEXT` when `--context` is omitted, which keeps demo commands pinned even if another terminal changes the global kubectl context.
 
 ## 🔬 Current Status (v0.x Beta)
 

@@ -42,6 +42,86 @@ class ScoringEngine:
         self.base_scores = self.weights.get('base_scores', {})
         self.multipliers = self.weights.get('multipliers', {})
         self.keywords = self.weights.get('keywords', {})
+
+    def _issue_sort_key(self, issue: Issue) -> tuple:
+        """Sort critical issues first, then warnings, then info, with score descending."""
+        severity_rank = {
+            IssueSeverity.CRITICAL: 0,
+            IssueSeverity.WARNING: 1,
+            IssueSeverity.INFO: 2,
+        }
+        return (severity_rank.get(issue.severity, 3), -issue.score)
+
+    def _format_resource_ref(self, resource: ResourceRecord) -> str:
+        if resource.namespace:
+            return f"{resource.kind.value}/{resource.namespace}/{resource.name}"
+        return f"{resource.kind.value}/{resource.name}"
+
+    def _format_event_evidence(self, event_resource: ResourceRecord) -> str:
+        properties = event_resource.properties
+        event_type = properties.get('type', 'Normal')
+        reason = properties.get('reason', 'Unknown')
+        count = properties.get('count', 1)
+        timestamp = properties.get('lastTimestamp') or properties.get('firstTimestamp')
+        message = properties.get('message', '')
+
+        prefix = f"Event {event_type}/{reason}"
+        if timestamp:
+            prefix += f" at {timestamp}"
+        if count and count != 1:
+            prefix += f" (x{count})"
+        return f"{prefix}: {message}"
+
+    def _status_evidence(self, resource: ResourceRecord) -> List[str]:
+        """Extract precise status facts from the resource body."""
+        evidence = [f"Resource status: {self._format_resource_ref(resource)} status={resource.status}"]
+        status = resource.properties.get('status', {})
+        if not isinstance(status, dict):
+            return evidence
+
+        container_statuses = (
+            status.get('initContainerStatuses', [])
+            + status.get('containerStatuses', [])
+            + status.get('ephemeralContainerStatuses', [])
+        )
+        for container in container_statuses:
+            name = container.get('name', 'unknown')
+            state = container.get('state', {})
+            waiting = state.get('waiting')
+            if waiting:
+                reason = waiting.get('reason', 'Waiting')
+                message = waiting.get('message', '')
+                line = f"Container {name} waiting: {reason}"
+                if message:
+                    line += f" - {message}"
+                evidence.append(line)
+                continue
+
+            terminated = state.get('terminated') or container.get('lastState', {}).get('terminated')
+            if terminated:
+                reason = terminated.get('reason', 'Terminated')
+                exit_code = terminated.get('exitCode')
+                line = f"Container {name} terminated: {reason}"
+                if exit_code is not None:
+                    line += f" exitCode={exit_code}"
+                message = terminated.get('message')
+                if message:
+                    line += f" - {message}"
+                evidence.append(line)
+
+        for condition in status.get('conditions', []):
+            if condition.get('status') == 'False':
+                reason = condition.get('reason')
+                message = condition.get('message')
+                condition_type = condition.get('type', 'Condition')
+                line = f"Condition {condition_type}=False"
+                if reason:
+                    line += f": {reason}"
+                if message:
+                    line += f" - {message}"
+                evidence.append(line)
+
+        return evidence[:5]
         
     def _load_weights(self, weights_file: Optional[str] = None) -> Dict:
         """Load scoring weights from TOML file"""
@@ -104,11 +184,17 @@ class ScoringEngine:
                 'status_Unknown': 70.0,
                 'status_NotReady': 80.0,
                 'status_Unavailable': 75.0,
+                'status_Error': 85.0,
+                'status_CrashLoopBackOff': 85.0,
+                'status_ImagePullBackOff': 75.0,
+                'status_ErrImagePull': 75.0,
+                'status_CreateContainerConfigError': 90.0,
                 'status_Running': 0.0,
                 'status_Active': 0.0,
                 'status_Ready': 0.0,
                 'status_Available': 0.0,
                 'status_Bound': 0.0,
+                'status_Complete': 0.0,
             },
             
             'multipliers': {
@@ -241,6 +327,7 @@ class ScoringEngine:
             critical_path=is_critical_path,
             severity=IssueSeverity.INFO,  # Will be updated by scoring
             score=0.0,  # Will be calculated
+            evidence=[self._format_event_evidence(event_resource)],
         )
         
         # Calculate score
@@ -293,6 +380,7 @@ class ScoringEngine:
             critical_path=is_critical_path,
             severity=IssueSeverity.INFO,
             score=status_score,
+            evidence=self._status_evidence(resource),
         )
         
         # Set severity based on score
@@ -320,6 +408,15 @@ class ScoringEngine:
         last_error = errors[-1]
         if len(last_error) > 80:
             last_error = last_error[:77] + "..."
+
+        critical_patterns = ('panic', 'fatal', 'crash', 'exception')
+        has_hard_failure = any(
+            pattern in error.lower()
+            for error in errors
+            for pattern in critical_patterns
+        )
+        score = 100.0 if has_hard_failure else 85.0
+        severity = IssueSeverity.CRITICAL if has_hard_failure else IssueSeverity.WARNING
             
         return Issue(
             resource_uid=target_resource.uid,
@@ -329,9 +426,10 @@ class ScoringEngine:
             message="\n".join([f"- {e}" for e in errors]),
             timestamp=datetime.utcnow(),
             critical_path=True, # Logs are usually critical if we are diagnosing
-            severity=IssueSeverity.WARNING, # Will be rescored
-            score=85.0, # High base score for log errors
-            suggested_actions=["Review full logs for context", "Check application configuration"]
+            severity=severity,
+            score=score,
+            suggested_actions=["Review full logs for context", "Check application configuration"],
+            evidence=[f"Log line: {line}" for line in errors[-3:]],
         )
 
     def _get_age_multiplier(self, timestamp) -> float:
@@ -462,7 +560,7 @@ class ScoringEngine:
                 issues.append(status_issue)
         
         # Sort by severity and score
-        issues.sort(key=lambda i: (i.severity.value, -i.score))
+        issues.sort(key=self._issue_sort_key)
         
         return issues
     
@@ -483,14 +581,17 @@ class ScoringEngine:
         
         if critical_issues:
             # Return highest scoring critical issue on critical path
-            critical_path_issues = [i for i in critical_issues if i.critical_path]
+            critical_path_issues = sorted(
+                [i for i in critical_issues if i.critical_path],
+                key=self._issue_sort_key,
+            )
             if critical_path_issues:
                 return critical_path_issues[0]
             else:
-                return critical_issues[0]
+                return sorted(critical_issues, key=self._issue_sort_key)[0]
         
         # Fallback to highest scoring issue
-        return issues[0] if issues else None
+        return sorted(issues, key=self._issue_sort_key)[0] if issues else None
     
     def get_contributing_factors(self, issues: List[Issue], root_cause: Optional[Issue] = None) -> List[Issue]:
         """Get contributing factors (top 2 issues excluding root cause)
@@ -510,4 +611,4 @@ class ScoringEngine:
         
         # Return top 2 issues with score >= 50
         contributing = [i for i in filtered_issues if i.score >= 50.0]
-        return contributing[:2]
+        return sorted(contributing, key=self._issue_sort_key)[:2]

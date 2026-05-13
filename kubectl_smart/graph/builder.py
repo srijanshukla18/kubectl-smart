@@ -5,6 +5,7 @@ This module builds directed graphs of Kubernetes resource dependencies
 using python-igraph as specified in the technical requirements.
 """
 
+import warnings
 from typing import Dict, List, Optional, Set, Tuple
 
 import structlog
@@ -14,7 +15,16 @@ from ..models import ResourceKind, ResourceRecord
 
 logger = structlog.get_logger(__name__)
 
-DEPENDENCY_EDGE_TYPES = {"scheduled-on", "mounts", "uses", "binds-to", "selects", "depends"}
+DEPENDENCY_EDGE_TYPES = {
+    "scheduled-on",
+    "mounts",
+    "uses",
+    "binds-to",
+    "selects",
+    "depends",
+    "routes-to",
+    "resolves",
+}
 
 
 class GraphBuilder:
@@ -91,6 +101,8 @@ class GraphBuilder:
             relationships.extend(self._extract_replicaset_relationships(resource))
         elif resource.kind == ResourceKind.SERVICE:
             relationships.extend(self._extract_service_relationships(resource))
+        elif resource.kind == ResourceKind.INGRESS:
+            relationships.extend(self._extract_ingress_relationships(resource))
         elif resource.kind == ResourceKind.PVC:
             relationships.extend(self._extract_pvc_relationships(resource))
         elif resource.kind == ResourceKind.STATEFULSET:
@@ -118,23 +130,77 @@ class GraphBuilder:
             # PVC relationships
             if 'persistentVolumeClaim' in volume:
                 pvc_name = volume['persistentVolumeClaim']['claimName']
-                pvc_uid = self._find_resource_uid(ResourceKind.PVC, pvc_name, pod.namespace)
+                pvc_uid = self._ensure_resource_uid(ResourceKind.PVC, pvc_name, pod.namespace)
                 if pvc_uid:
                     relationships.append((pvc_uid, 'mounts'))
             
             # ConfigMap relationships
             if 'configMap' in volume:
                 cm_name = volume['configMap']['name']
-                cm_uid = self._find_resource_uid(ResourceKind.CONFIGMAP, cm_name, pod.namespace)
+                cm_uid = None
+                if not volume['configMap'].get('optional', False):
+                    cm_uid = self._ensure_resource_uid(ResourceKind.CONFIGMAP, cm_name, pod.namespace)
+                else:
+                    cm_uid = self._find_resource_uid(ResourceKind.CONFIGMAP, cm_name, pod.namespace)
                 if cm_uid:
                     relationships.append((cm_uid, 'mounts'))
             
             # Secret relationships
             if 'secret' in volume:
                 secret_name = volume['secret']['secretName']
-                secret_uid = self._find_resource_uid(ResourceKind.SECRET, secret_name, pod.namespace)
+                secret_uid = None
+                if not volume['secret'].get('optional', False):
+                    secret_uid = self._ensure_resource_uid(ResourceKind.SECRET, secret_name, pod.namespace)
+                else:
+                    secret_uid = self._find_resource_uid(ResourceKind.SECRET, secret_name, pod.namespace)
                 if secret_uid:
                     relationships.append((secret_uid, 'mounts'))
+
+        # Environment variable references can be just as critical as mounted
+        # files: a missing env Secret/ConfigMap prevents containers starting.
+        for container in self._pod_containers(spec):
+            for env_from in container.get('envFrom', []) or []:
+                config_map_ref = env_from.get('configMapRef') or {}
+                cm_name = config_map_ref.get('name')
+                if cm_name:
+                    if config_map_ref.get('optional', False):
+                        cm_uid = self._find_resource_uid(ResourceKind.CONFIGMAP, cm_name, pod.namespace)
+                    else:
+                        cm_uid = self._ensure_resource_uid(ResourceKind.CONFIGMAP, cm_name, pod.namespace)
+                    if cm_uid:
+                        relationships.append((cm_uid, 'uses'))
+
+                secret_ref = env_from.get('secretRef') or {}
+                secret_name = secret_ref.get('name')
+                if secret_name:
+                    if secret_ref.get('optional', False):
+                        secret_uid = self._find_resource_uid(ResourceKind.SECRET, secret_name, pod.namespace)
+                    else:
+                        secret_uid = self._ensure_resource_uid(ResourceKind.SECRET, secret_name, pod.namespace)
+                    if secret_uid:
+                        relationships.append((secret_uid, 'uses'))
+
+            for env in container.get('env', []) or []:
+                value_from = env.get('valueFrom') or {}
+                config_map_key_ref = value_from.get('configMapKeyRef') or {}
+                cm_name = config_map_key_ref.get('name')
+                if cm_name:
+                    if config_map_key_ref.get('optional', False):
+                        cm_uid = self._find_resource_uid(ResourceKind.CONFIGMAP, cm_name, pod.namespace)
+                    else:
+                        cm_uid = self._ensure_resource_uid(ResourceKind.CONFIGMAP, cm_name, pod.namespace)
+                    if cm_uid:
+                        relationships.append((cm_uid, 'uses'))
+
+                secret_key_ref = value_from.get('secretKeyRef') or {}
+                secret_name = secret_key_ref.get('name')
+                if secret_name:
+                    if secret_key_ref.get('optional', False):
+                        secret_uid = self._find_resource_uid(ResourceKind.SECRET, secret_name, pod.namespace)
+                    else:
+                        secret_uid = self._ensure_resource_uid(ResourceKind.SECRET, secret_name, pod.namespace)
+                    if secret_uid:
+                        relationships.append((secret_uid, 'uses'))
         
         # ServiceAccount relationship
         service_account = spec.get('serviceAccountName', 'default')
@@ -144,6 +210,13 @@ class GraphBuilder:
                 relationships.append((sa_uid, 'uses'))
         
         return relationships
+
+    def _pod_containers(self, spec: Dict) -> List[Dict]:
+        """Return all container specs that can reference config or secrets."""
+        containers = []
+        for field in ("initContainers", "containers", "ephemeralContainers"):
+            containers.extend(spec.get(field, []) or [])
+        return containers
     
     def _extract_deployment_relationships(self, deployment: ResourceRecord) -> List[Tuple[str, str]]:
         """Extract Deployment relationships to ReplicaSets"""
@@ -187,18 +260,50 @@ class GraphBuilder:
         spec = service.get_property('spec', {})
         selector = spec.get('selector', {})
         
-        if not selector:
-            return relationships
-        
         # Find Pods that match the selector
-        for uid, resource in self.resources.items():
-            if (resource.kind == ResourceKind.POD and 
-                resource.namespace == service.namespace):
-                
-                pod_labels = resource.labels
-                if self._labels_match_selector(pod_labels, selector):
-                    relationships.append((uid, 'selects'))
+        if selector:
+            for uid, resource in self.resources.items():
+                if (resource.kind == ResourceKind.POD and
+                    resource.namespace == service.namespace):
+                    pod_labels = resource.labels
+                    if self._labels_match_selector(pod_labels, selector):
+                        relationships.append((uid, 'selects'))
+
+        endpoints_uid = self._find_resource_uid(ResourceKind.ENDPOINTS, service.name, service.namespace)
+        if endpoints_uid:
+            relationships.append((endpoints_uid, 'resolves'))
         
+        return relationships
+
+    def _extract_ingress_relationships(self, ingress: ResourceRecord) -> List[Tuple[str, str]]:
+        """Extract Ingress relationships to Services and TLS Secrets."""
+        relationships = []
+        spec = ingress.get_property('spec', {})
+
+        for tls in spec.get('tls', []) or []:
+            secret_name = tls.get('secretName')
+            if secret_name:
+                secret_uid = self._ensure_resource_uid(ResourceKind.SECRET, secret_name, ingress.namespace)
+                if secret_uid:
+                    relationships.append((secret_uid, 'uses'))
+
+        default_backend = spec.get('defaultBackend', {}) or {}
+        default_service = (default_backend.get('service') or {}).get('name')
+        if default_service:
+            service_uid = self._ensure_resource_uid(ResourceKind.SERVICE, default_service, ingress.namespace)
+            if service_uid:
+                relationships.append((service_uid, 'routes-to'))
+
+        for rule in spec.get('rules', []) or []:
+            http = rule.get('http') or {}
+            for path in http.get('paths', []) or []:
+                backend = path.get('backend') or {}
+                service_name = (backend.get('service') or {}).get('name')
+                if service_name:
+                    service_uid = self._ensure_resource_uid(ResourceKind.SERVICE, service_name, ingress.namespace)
+                    if service_uid:
+                        relationships.append((service_uid, 'routes-to'))
+
         return relationships
     
     def _extract_pvc_relationships(self, pvc: ResourceRecord) -> List[Tuple[str, str]]:
@@ -257,6 +362,28 @@ class GraphBuilder:
                 resource.namespace == namespace):
                 return uid
         return None
+
+    def _ensure_resource_uid(self, kind: ResourceKind, name: str, namespace: Optional[str] = None) -> Optional[str]:
+        """Find a resource UID or add a red placeholder for a required missing dependency."""
+        if not name:
+            return None
+
+        existing_uid = self._find_resource_uid(kind, name, namespace)
+        if existing_uid:
+            return existing_uid
+
+        namespace_key = namespace or "_cluster"
+        missing_uid = f"missing:{kind.value}:{namespace_key}:{name}"
+        if missing_uid not in self.resources:
+            self._add_vertex(ResourceRecord(
+                kind=kind,
+                name=name,
+                uid=missing_uid,
+                namespace=namespace,
+                status="Missing",
+                properties={"missing": True},
+            ))
+        return missing_uid
     
     def _labels_match_selector(self, labels: Dict[str, str], selector: Dict[str, str]) -> bool:
         """Check if labels match a selector"""
@@ -402,6 +529,11 @@ class GraphBuilder:
             'Unknown': '🔴',
             'NotReady': '🔴',
             'Unavailable': '🔴',
+            'Missing': '🔴',
+            'CrashLoopBackOff': '🔴',
+            'ImagePullBackOff': '🔴',
+            'ErrImagePull': '🔴',
+            'CreateContainerConfigError': '🔴',
         }
         return icon_map.get(status, '⚪')
     
@@ -447,9 +579,15 @@ class GraphBuilder:
         target_vertex = self.uid_to_vertex[target_uid]
         
         try:
-            path_vertices = self.graph.get_shortest_paths(
-                source_vertex, target_vertex, output="vpath"
-            )[0]
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore",
+                    message="Couldn't reach some vertices.*",
+                    category=RuntimeWarning,
+                )
+                path_vertices = self.graph.get_shortest_paths(
+                    source_vertex, target_vertex, output="vpath"
+                )[0]
             
             return [self.vertex_to_uid[vid] for vid in path_vertices]
         except Exception as e:

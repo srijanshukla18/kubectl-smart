@@ -162,6 +162,8 @@ class KubernetesResourceParser(Parser):
                 properties['data'] = data.get('data', {})
             if 'type' in data:
                 properties['type'] = data.get('type', '')
+            if kind == ResourceKind.ENDPOINTS:
+                properties['subsets'] = data.get('subsets', []) or []
             
             return ResourceRecord(
                 kind=kind,
@@ -184,6 +186,21 @@ class KubernetesResourceParser(Parser):
         status_obj = data.get('status', {})
         
         if kind == ResourceKind.POD:
+            container_statuses = (
+                status_obj.get('initContainerStatuses', [])
+                + status_obj.get('containerStatuses', [])
+                + status_obj.get('ephemeralContainerStatuses', [])
+            )
+            for container_status in container_statuses:
+                waiting = (container_status.get('state') or {}).get('waiting')
+                if waiting and waiting.get('reason'):
+                    return waiting['reason']
+
+            for container_status in container_statuses:
+                terminated = (container_status.get('state') or {}).get('terminated')
+                if terminated and terminated.get('reason'):
+                    return terminated['reason']
+
             return status_obj.get('phase', 'Unknown')
         
         elif kind == ResourceKind.NODE:
@@ -209,6 +226,14 @@ class KubernetesResourceParser(Parser):
         elif kind == ResourceKind.SERVICE:
             # Services don't have a clear status, assume Active if it exists
             return 'Active'
+
+        elif kind == ResourceKind.ENDPOINTS:
+            subsets = data.get('subsets', []) or []
+            has_ready_address = any(
+                (subset.get('addresses') or [])
+                for subset in subsets
+            )
+            return 'Active' if has_ready_address else 'Unavailable'
         
         elif kind == ResourceKind.JOB:
             conditions = status_obj.get('conditions', [])
@@ -276,6 +301,11 @@ class EventParser(Parser):
             event_type = data.get('type', 'Normal')
             first_timestamp = self._parse_timestamp(data.get('firstTimestamp'))
             last_timestamp = self._parse_timestamp(data.get('lastTimestamp'))
+            event_timestamp = (
+                last_timestamp
+                or first_timestamp
+                or self._parse_timestamp(metadata.get('creationTimestamp'))
+            )
             count = data.get('count', 1)
             
             # Store event-specific properties
@@ -297,7 +327,7 @@ class EventParser(Parser):
                 namespace=namespace,
                 properties=properties,
                 status=event_type,
-                creation_timestamp=first_timestamp,
+                creation_timestamp=event_timestamp,
             )
             
         except Exception as e:

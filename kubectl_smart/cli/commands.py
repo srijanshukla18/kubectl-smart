@@ -6,6 +6,7 @@ as specified in the technical requirements.
 """
 
 import asyncio
+import re
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -20,6 +21,9 @@ from ..models import (
     AnalysisConfig,
     DiagnosisResult,
     GraphResult,
+    Issue,
+    IssueSeverity,
+    ResourceKind,
     ResourceRecord,
     SubjectCtx,
     TopResult,
@@ -49,6 +53,42 @@ class BaseCommand:
         self.forecasting_engine = ForecastingEngine(
             forecast_horizon_hours=self.config.forecast_horizon_hours
         )
+        self.data_gaps: List[str] = []
+
+    def _reset_data_gaps(self) -> None:
+        self.data_gaps = []
+
+    def _add_data_gap(self, message: str) -> None:
+        if message and message not in self.data_gaps:
+            self.data_gaps.append(message)
+
+    def _record_blob_gap(self, blob) -> None:
+        metadata = getattr(blob, "metadata", {}) or {}
+        if not metadata.get("data_gap"):
+            return
+
+        operation = metadata.get("operation") or metadata.get("collector") or "collector"
+        resource_type = metadata.get("resource_type")
+        category = metadata.get("category")
+        error = (metadata.get("error") or "").splitlines()[0]
+        suggested_action = metadata.get("suggested_action")
+
+        label = f"{operation}"
+        if resource_type:
+            label += f" {resource_type}"
+        if category:
+            label += f" unavailable ({category})"
+        else:
+            label += " unavailable"
+        if error:
+            label += f": {error}"
+        if suggested_action:
+            label += f" | Check: {suggested_action}"
+
+        self._add_data_gap(label)
+
+    def _record_exception_gap(self, collector_name: str, error: Exception) -> None:
+        self._add_data_gap(f"{collector_name} failed: {str(error).splitlines()[0]}")
     
     async def _collect_data(self, subject: SubjectCtx, collector_names: List[str]) -> List[ResourceRecord]:
         """Collect data using multiple collectors concurrently"""
@@ -77,13 +117,17 @@ class BaseCommand:
         for i, blob in enumerate(blobs):
             if isinstance(blob, Exception):
                 logger.warning("Collector failed", collector=collectors[i].name, error=str(blob))
+                self._record_exception_gap(collectors[i].name, blob)
                 continue
+
+            self._record_blob_gap(blob)
             
             try:
                 resources = parser_registry.parse(blob)
                 all_resources.extend(resources)
             except Exception as e:
                 logger.warning("Failed to parse data", collector=collectors[i].name, error=str(e))
+                self._add_data_gap(f"{collectors[i].name} output could not be parsed: {str(e).splitlines()[0]}")
         
         collection_time = time.time() - start_time
         logger.debug("Data collection completed", 
@@ -103,15 +147,133 @@ class DiagCommand(BaseCommand):
     - Output sections: Header, Root Cause, Contributing Factors, Suggested Action
     - Exit codes: 0 = no issues ≥50; 1 = warnings; 2 = critical
     """
+
+    async def _collect_diag_data(self, subject: SubjectCtx) -> List[ResourceRecord]:
+        """Collect diagnosis data plus targeted related resources for evidence."""
+        collector_names = ['get', 'describe', 'events', 'logs']
+        all_resources = await self._collect_data(subject, collector_names)
+
+        if subject.kind == ResourceKind.SERVICE:
+            endpoints_collector = collector_registry.create('get', resource_type='endpoints')
+            endpoints_blob = await endpoints_collector.collect(subject)
+            self._record_blob_gap(endpoints_blob)
+            try:
+                all_resources.extend(parser_registry.parse(endpoints_blob))
+            except Exception as e:
+                logger.warning("Failed to parse service endpoint data", error=str(e))
+                self._add_data_gap(f"endpoints output could not be parsed: {str(e).splitlines()[0]}")
+
+            pods_collector = collector_registry.create('get', resource_type='pods')
+            pods_blob = await pods_collector.collect(subject.model_copy(update={"name": ""}))
+            self._record_blob_gap(pods_blob)
+            try:
+                all_resources.extend(parser_registry.parse(pods_blob))
+            except Exception as e:
+                logger.warning("Failed to parse service pod data", error=str(e))
+                self._add_data_gap(f"pods output could not be parsed: {str(e).splitlines()[0]}")
+
+        return all_resources
+
+    def _selector_string(self, selector: Dict[str, str]) -> str:
+        if not selector:
+            return "<none>"
+        return ",".join(f"{key}={value}" for key, value in sorted(selector.items()))
+
+    def _pod_matches_selector(self, pod: ResourceRecord, selector: Dict[str, str]) -> bool:
+        return bool(selector) and all(pod.labels.get(key) == value for key, value in selector.items())
+
+    def _endpoint_address_counts(self, endpoints: ResourceRecord) -> tuple[int, int]:
+        ready = 0
+        not_ready = 0
+        for subset in endpoints.properties.get('subsets', []) or []:
+            ready += len(subset.get('addresses') or [])
+            not_ready += len(subset.get('notReadyAddresses') or [])
+        return ready, not_ready
+
+    def _service_endpoint_evidence(
+        self,
+        target_resource: ResourceRecord,
+        endpoints: ResourceRecord,
+        all_resources: List[ResourceRecord],
+    ) -> List[str]:
+        ready_count, not_ready_count = self._endpoint_address_counts(endpoints)
+        evidence = [
+            (
+                f"Endpoints/{target_resource.namespace}/{target_resource.name}: "
+                f"ready addresses={ready_count}, not-ready addresses={not_ready_count}"
+            )
+        ]
+
+        selector = target_resource.properties.get('spec', {}).get('selector', {}) or {}
+        evidence.append(f"Service selector: {self._selector_string(selector)}")
+
+        if selector:
+            namespace_pods = [
+                resource for resource in all_resources
+                if resource.kind == ResourceKind.POD and resource.namespace == target_resource.namespace
+            ]
+            matching_pods = [
+                pod for pod in namespace_pods
+                if self._pod_matches_selector(pod, selector)
+            ]
+            if matching_pods:
+                pod_summary = ", ".join(f"{pod.name}({pod.status})" for pod in matching_pods[:5])
+                evidence.append(f"Pods matching selector: {pod_summary}")
+            else:
+                evidence.append(f"No Pods in namespace match selector {self._selector_string(selector)}")
+
+        return evidence
+
+    def _service_endpoint_issue(
+        self,
+        target_resource: ResourceRecord,
+        all_resources: List[ResourceRecord],
+    ) -> Optional[Issue]:
+        """Create a target Service issue when its Endpoints object is empty."""
+        if target_resource.kind != ResourceKind.SERVICE:
+            return None
+
+        for resource in all_resources:
+            if (
+                resource.kind == ResourceKind.ENDPOINTS
+                and resource.name == target_resource.name
+                and resource.namespace == target_resource.namespace
+                and resource.status == 'Unavailable'
+            ):
+                evidence = self._service_endpoint_evidence(
+                    target_resource,
+                    resource,
+                    all_resources,
+                )
+                return Issue(
+                    resource_uid=target_resource.uid,
+                    title="Service has no ready endpoints",
+                    description=f"Service {target_resource.name} has no ready Endpoint addresses",
+                    reason="ServiceNoEndpoints",
+                    message=(
+                        f"Endpoints/{target_resource.namespace}/{target_resource.name} "
+                        "has no ready addresses. Check Service selector labels and backend pod readiness."
+                    ),
+                    severity=IssueSeverity.CRITICAL,
+                    score=95.0,
+                    critical_path=True,
+                    evidence=evidence,
+                    suggested_actions=[
+                        f"kubectl get endpoints {target_resource.name} -n {target_resource.namespace}",
+                        f"kubectl describe svc {target_resource.name} -n {target_resource.namespace}",
+                        "Compare Service selector labels with backend pod labels",
+                    ],
+                )
+
+        return None
     
     async def execute(self, subject: SubjectCtx) -> CommandResult:
         """Execute diagnosis command"""
         start_time = time.time()
+        self._reset_data_gaps()
         
         try:
-            # Collect data using specified collectors
-            collector_names = ['get', 'describe', 'events', 'logs']
-            all_resources = await self._collect_data(subject, collector_names)
+            all_resources = await self._collect_diag_data(subject)
             
             # Build dependency graph
             self.graph_builder.add_resources(all_resources)
@@ -148,6 +310,10 @@ class DiagCommand(BaseCommand):
                 issue for issue in issues 
                 if issue.resource_uid == target_resource.uid
             ]
+            service_endpoint_issue = self._service_endpoint_issue(target_resource, all_resources)
+            if service_endpoint_issue:
+                target_issues.append(service_endpoint_issue)
+                target_issues.sort(key=self.scoring_engine._issue_sort_key)
             
             # Identify root cause and contributing factors
             root_cause = self.scoring_engine.get_root_cause(target_issues)
@@ -167,6 +333,7 @@ class DiagCommand(BaseCommand):
                 contributing_factors=contributing_factors,
                 suggested_actions=suggested_actions,
                 recent_events=events[:5], # Top 5 recent events
+                data_gaps=self.data_gaps,
                 analysis_duration=analysis_duration,
             )
             
@@ -201,10 +368,9 @@ class DiagCommand(BaseCommand):
     async def execute_raw(self, subject: SubjectCtx) -> DiagnosisResult:
         """Execute diagnosis and return raw DiagnosisResult (for JSON output)"""
         start_time = time.time()
+        self._reset_data_gaps()
 
-        # Collect data using specified collectors
-        collector_names = ['get', 'describe', 'events', 'logs']
-        all_resources = await self._collect_data(subject, collector_names)
+        all_resources = await self._collect_diag_data(subject)
 
         # Build dependency graph
         self.graph_builder.add_resources(all_resources)
@@ -231,6 +397,10 @@ class DiagCommand(BaseCommand):
             issue for issue in issues
             if issue.resource_uid == target_resource.uid
         ]
+        service_endpoint_issue = self._service_endpoint_issue(target_resource, all_resources)
+        if service_endpoint_issue:
+            target_issues.append(service_endpoint_issue)
+            target_issues.sort(key=self.scoring_engine._issue_sort_key)
 
         # Identify root cause and contributing factors
         root_cause = self.scoring_engine.get_root_cause(target_issues)
@@ -249,25 +419,42 @@ class DiagCommand(BaseCommand):
             contributing_factors=contributing_factors,
             suggested_actions=suggested_actions,
             recent_events=events[:5],
+            data_gaps=self.data_gaps,
             analysis_duration=analysis_duration,
         )
 
     def _generate_suggested_actions(self, resource: ResourceRecord, root_cause, contributing_factors) -> List[str]:
         """Generate specific suggested actions based on diagnosis"""
         actions = []
+        reason = (root_cause.reason or '').lower() if root_cause else ''
+        raw_message = root_cause.message if root_cause and root_cause.message else ''
+        message = raw_message.lower()
+        missing_config_ref = bool(
+            root_cause
+            and 'not found' in message
+            and ('secret "' in message or 'configmap "' in message or 'config map "' in message)
+        )
         
         # Generic actions based on resource status
-        if resource.status in ['Failed', 'Pending', 'Unknown']:
+        if resource.status in ['Failed', 'Pending', 'Unknown'] and not missing_config_ref:
             actions.append(f"Check logs: kubectl logs {resource.name}")
             if resource.namespace:
                 actions[-1] += f" -n {resource.namespace}"
         
         # Actions based on root cause
         if root_cause:
-            reason = (root_cause.reason or '').lower()
-            message = (root_cause.message or '').lower()
-
-            if 'failedmount' in reason or 'mount' in message:
+            missing_ref = re.search(r'(secret|configmap|config map) "([^"]+)" not found', raw_message, re.IGNORECASE)
+            if missing_ref:
+                ref_type = missing_ref.group(1).replace(' ', '').lower()
+                ref_name = missing_ref.group(2)
+                kubectl_type = 'secret' if ref_type == 'secret' else 'configmap'
+                describe = 'Secret' if kubectl_type == 'secret' else 'ConfigMap'
+                action = f"Verify missing {describe}: kubectl get {kubectl_type} {ref_name}"
+                if resource.namespace:
+                    action += f" -n {resource.namespace}"
+                actions.append(action)
+                actions.append(f"Create or restore {describe} {ref_name}, or update the Pod reference")
+            elif 'failedmount' in reason or 'mount' in message:
                 actions.append("Check PVC status: kubectl get pvc")
                 actions.append("Verify storage class: kubectl get storageclass")
             elif 'failedscheduling' in reason:
@@ -297,6 +484,10 @@ class DiagCommand(BaseCommand):
             elif 'networkpolicy' in message or 'deny' in message:
                 actions.append("Review NetworkPolicy rules in namespace")
                 actions.append("Temporarily relax policy to validate connectivity")
+            elif 'servicenoendpoints' in reason:
+                actions.extend(root_cause.suggested_actions)
+            elif 'logfailure' in reason:
+                actions.extend(root_cause.suggested_actions)
         
         # Actions based on resource type
         if resource.kind.value == "Pod":
@@ -314,17 +505,73 @@ class GraphCommand(BaseCommand):
     - Uses graph built during last diag run in same process; else re-collect minimal data
     - Provides ASCII tree visualization with health indicators
     """
+
+    async def _collect_graph_data(self, subject: SubjectCtx) -> List[ResourceRecord]:
+        """Collect the namespace resource set needed to build useful relationships."""
+        namespace_resource_types = [
+            "pods",
+            "deployments",
+            "replicasets",
+            "statefulsets",
+            "daemonsets",
+            "services",
+            "configmaps",
+            "secrets",
+            "persistentvolumeclaims",
+            "serviceaccounts",
+            "ingresses",
+            "endpoints",
+        ]
+        cluster_resource_types = ["nodes", "persistentvolumes"]
+
+        collectors = []
+        subjects = []
+        list_subject = subject.model_copy(update={"name": ""})
+        cluster_subject = subject.model_copy(update={"name": "", "namespace": None})
+
+        for resource_type in namespace_resource_types:
+            try:
+                collectors.append(collector_registry.create("get", resource_type=resource_type))
+                subjects.append(list_subject)
+            except Exception as e:
+                logger.warning("Failed to create graph collector", resource_type=resource_type, error=str(e))
+
+        for resource_type in cluster_resource_types:
+            try:
+                collectors.append(collector_registry.create("get", resource_type=resource_type))
+                subjects.append(cluster_subject)
+            except Exception as e:
+                logger.warning("Failed to create graph collector", resource_type=resource_type, error=str(e))
+
+        blobs = await asyncio.gather(
+            *[collector.collect(collector_subject) for collector, collector_subject in zip(collectors, subjects)],
+            return_exceptions=True,
+        )
+
+        resources = []
+        for i, blob in enumerate(blobs):
+            if isinstance(blob, Exception):
+                logger.warning("Graph collector failed", collector=collectors[i].name, error=str(blob))
+                self._record_exception_gap(collectors[i].name, blob)
+                continue
+            self._record_blob_gap(blob)
+            try:
+                resources.extend(parser_registry.parse(blob))
+            except Exception as e:
+                logger.warning("Failed to parse graph data", collector=collectors[i].name, error=str(e))
+                self._add_data_gap(f"{collectors[i].name} output could not be parsed: {str(e).splitlines()[0]}")
+
+        return resources
     
     async def execute(self, subject: SubjectCtx, direction: str = "downstream") -> CommandResult:
         """Execute graph command"""
         start_time = time.time()
+        self._reset_data_gaps()
         
         try:
             # Check if we have an existing graph, otherwise collect minimal data
             if self.graph_builder.graph.vcount() == 0:
-                # No existing graph, collect minimal data
-                collector_names = ['get', 'describe']
-                all_resources = await self._collect_data(subject, collector_names)
+                all_resources = await self._collect_graph_data(subject)
                 self.graph_builder.add_resources(all_resources)
             
             # Find target resource
@@ -348,10 +595,22 @@ class GraphCommand(BaseCommand):
                 return CommandResult(output=output, exit_code=2, analysis_duration=analysis_duration)
             
             # Generate ASCII graph
-            ascii_graph = self.graph_builder.to_ascii(target_uid, direction, max_depth=3)
-            
-            # Get dependencies
-            dependencies = self.graph_builder.get_dependencies(target_uid, direction)
+            if direction == "both":
+                upstream_graph = self.graph_builder.to_ascii(target_uid, "upstream", max_depth=3)
+                downstream_graph = self.graph_builder.to_ascii(target_uid, "downstream", max_depth=3)
+                ascii_graph = (
+                    "UPSTREAM DEPENDENCIES (what this resource depends on):\n"
+                    f"{upstream_graph}\n\n"
+                    "DOWNSTREAM DEPENDENCIES (what depends on this resource):\n"
+                    f"{downstream_graph}"
+                )
+                dependencies = list(dict.fromkeys(
+                    self.graph_builder.get_dependencies(target_uid, "upstream")
+                    + self.graph_builder.get_dependencies(target_uid, "downstream")
+                ))
+            else:
+                ascii_graph = self.graph_builder.to_ascii(target_uid, direction, max_depth=3)
+                dependencies = self.graph_builder.get_dependencies(target_uid, direction)
             
             # Build edges list
             edges = []
@@ -374,6 +633,7 @@ class GraphCommand(BaseCommand):
                 ascii_graph=ascii_graph,
                 upstream_count=len(self.graph_builder.get_dependencies(target_uid, "upstream")),
                 downstream_count=len(self.graph_builder.get_dependencies(target_uid, "downstream")),
+                data_gaps=self.data_gaps,
                 analysis_duration=analysis_duration,
             )
             
@@ -414,6 +674,7 @@ class TopCommand(BaseCommand):
     async def execute(self, subject: SubjectCtx) -> CommandResult:
         """Execute top command"""
         start_time = time.time()
+        self._reset_data_gaps()
         
         try:
             # Collect data for namespace analysis
@@ -433,12 +694,15 @@ class TopCommand(BaseCommand):
             for i, blob in enumerate(extra_blobs):
                 if isinstance(blob, Exception):
                     logger.info("Optional collector failed", collector=extra_collectors[i].name, error=str(blob))
+                    self._record_exception_gap(extra_collectors[i].name, blob)
                     continue
+                self._record_blob_gap(blob)
                 try:
                     parsed = parser_registry.parse(blob)
                     all_resources.extend(parsed)
                 except Exception as e:
                     logger.info("Optional parser failed", collector=extra_collectors[i].name, error=str(e))
+                    self._add_data_gap(f"{extra_collectors[i].name} output could not be parsed: {str(e).splitlines()[0]}")
             
             # Filter to namespace resources
             namespace_resources = [
@@ -467,6 +731,7 @@ class TopCommand(BaseCommand):
                 capacity_warnings=capacity_warnings,
                 certificate_warnings=certificate_warnings,
                 forecast_horizon_hours=self.forecast_horizon_hours,
+                data_gaps=self.data_gaps,
                 analysis_duration=analysis_duration,
             )
             

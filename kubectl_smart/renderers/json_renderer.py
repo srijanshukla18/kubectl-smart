@@ -67,6 +67,7 @@ class JsonRenderer:
             "recent_events": [
                 self._serialize_event(e) for e in result.recent_events
             ],
+            "data_gaps": result.data_gaps,
             "analysis_duration_seconds": result.analysis_duration,
             "timestamp": result.timestamp.isoformat(),
             "exit_code": 2 if result.critical_issues or result.warning_issues else 0,
@@ -92,6 +93,7 @@ class JsonRenderer:
                 "downstream_count": result.downstream_count,
             },
             "ascii_graph": result.ascii_graph,
+            "data_gaps": result.data_gaps,
             "analysis_duration_seconds": result.analysis_duration,
             "timestamp": result.timestamp.isoformat(),
         }
@@ -115,6 +117,7 @@ class JsonRenderer:
                 "certificate_issues": len(result.certificate_warnings),
                 "total": len(result.capacity_warnings) + len(result.certificate_warnings),
             },
+            "data_gaps": result.data_gaps,
             "analysis_duration_seconds": result.analysis_duration,
             "timestamp": result.timestamp.isoformat(),
         }
@@ -189,6 +192,7 @@ class JsonRenderer:
             "critical_path": issue.critical_path,
             "timestamp": issue.timestamp.isoformat() if issue.timestamp else None,
             "suggested_actions": issue.suggested_actions,
+            "evidence": issue.evidence,
         }
 
     def _serialize_event(self, event: ResourceRecord) -> Dict[str, Any]:

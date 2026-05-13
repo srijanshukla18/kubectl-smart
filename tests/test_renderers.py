@@ -15,6 +15,7 @@ from kubectl_smart.models import (
     TopResult,
 )
 from kubectl_smart.renderers.terminal import TerminalRenderer
+from kubectl_smart.renderers.json_renderer import JsonRenderer
 
 
 class TestTerminalRenderer:
@@ -67,8 +68,34 @@ class TestRenderDiagnosis:
         )
         output = renderer.render_diagnosis(result)
 
-        assert "ROOT CAUSE" in output
+        assert "LIKELY ROOT CAUSE" in output
         assert sample_issue.title in output
+
+    def test_render_diagnosis_with_root_cause_evidence(
+        self, sample_subject_ctx, sample_resource_record
+    ):
+        """Test root cause rendering includes supporting evidence."""
+        renderer = TerminalRenderer(colors_enabled=False)
+        issue = Issue(
+            resource_uid=sample_resource_record.uid,
+            title="Missing Secret",
+            description="Secret token is not found",
+            severity=IssueSeverity.CRITICAL,
+            score=95.0,
+            reason="Failed",
+            message="secret token not found",
+            evidence=['Event Warning/Failed: Error: secret "token" not found'],
+        )
+        result = DiagnosisResult(
+            subject=sample_subject_ctx,
+            resource=sample_resource_record,
+            root_cause=issue,
+            analysis_duration=1.0,
+        )
+        output = renderer.render_diagnosis(result)
+
+        assert "Evidence" in output
+        assert 'secret "token" not found' in output
 
     def test_render_diagnosis_with_contributing_factors(
         self, sample_subject_ctx, sample_resource_record
@@ -111,6 +138,24 @@ class TestRenderDiagnosis:
         assert "SUGGESTED ACTIONS" in output
         assert "Check logs" in output
         assert "Restart pod" in output
+
+    def test_render_diagnosis_with_data_gaps(
+        self, sample_subject_ctx, sample_resource_record
+    ):
+        """Test diagnosis rendering shows unavailable signals."""
+        renderer = TerminalRenderer(colors_enabled=False)
+        result = DiagnosisResult(
+            subject=sample_subject_ctx,
+            resource=sample_resource_record,
+            data_gaps=[
+                "logs pods unavailable (rbac): User cannot get pods/log | Check: kubectl auth can-i get pods --subresource=log -n default"
+            ],
+            analysis_duration=1.0,
+        )
+        output = renderer.render_diagnosis(result)
+
+        assert "DATA GAPS" in output
+        assert "pods/log" in output
 
     def test_render_diagnosis_resource_not_found(self, sample_subject_ctx):
         """Test diagnosis rendering when resource not found"""
@@ -187,11 +232,13 @@ class TestRenderGraph:
         result = GraphResult(
             subject=sample_subject_ctx,
             ascii_graph="",
+            data_gaps=["get nodes unavailable (rbac): forbidden"],
             analysis_duration=0.1,
         )
         output = renderer.render_graph(result)
 
         assert "DEPENDENCY GRAPH" in output
+        assert "DATA GAPS" in output
 
 
 class TestRenderTop:
@@ -261,12 +308,14 @@ class TestRenderTop:
         renderer = TerminalRenderer(colors_enabled=False)
         result = TopResult(
             subject=sample_subject_ctx,
+            data_gaps=["metrics pods unavailable (rbac): forbidden"],
             forecast_horizon_hours=48,
             analysis_duration=1.0,
         )
         output = renderer.render_top(result)
 
         assert "No capacity or certificate issues predicted" in output
+        assert "DATA GAPS" in output
 
 
 class TestRenderError:
@@ -455,3 +504,35 @@ class TestRenderIssue:
         assert "Action 1" in output
         # Should show max 3 actions
         assert "Action 3" in output
+
+
+class TestJsonRenderer:
+    """Tests for JsonRenderer class."""
+
+    def test_render_diagnosis_includes_issue_evidence(
+        self, sample_subject_ctx, sample_resource_record
+    ):
+        """Test JSON diagnosis preserves evidence for automation."""
+        issue = Issue(
+            resource_uid=sample_resource_record.uid,
+            title="Missing Secret",
+            description="Secret token is not found",
+            severity=IssueSeverity.CRITICAL,
+            score=95.0,
+            reason="Failed",
+            message="secret token not found",
+            evidence=['Event Warning/Failed: Error: secret "token" not found'],
+        )
+        result = DiagnosisResult(
+            subject=sample_subject_ctx,
+            resource=sample_resource_record,
+            issues=[issue],
+            root_cause=issue,
+            analysis_duration=1.0,
+        )
+
+        output = JsonRenderer().render_diagnosis(result)
+
+        assert '"evidence"' in output
+        assert 'secret \\"token\\" not found' in output
+        assert '"data_gaps"' in output

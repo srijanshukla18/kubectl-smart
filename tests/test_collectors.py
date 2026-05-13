@@ -20,6 +20,7 @@ from kubectl_smart.collectors.base import (
     MetricsServer,
     RBACError,
     TimeoutError,
+    TransientKubectlError,
     registry,
 )
 from kubectl_smart.models import RawBlob, ResourceKind, SubjectCtx
@@ -40,6 +41,10 @@ class TestCollectorExceptions:
     def test_kubectl_error_is_collector_error(self):
         """Test KubectlError is a subclass of CollectorError"""
         assert issubclass(KubectlError, CollectorError)
+
+    def test_transient_kubectl_error_is_kubectl_error(self):
+        """Test transient errors are a retryable KubectlError subclass."""
+        assert issubclass(TransientKubectlError, KubectlError)
 
     def test_rbac_error_is_collector_error(self):
         """Test RBACError is a subclass of CollectorError"""
@@ -107,6 +112,26 @@ class TestCollectorBase:
         blob = collector._create_blob("describe output", "text/plain")
         assert blob.content_type == "text/plain"
         assert blob.data == "describe output"
+
+    def test_create_failure_blob_records_rbac_gap(self):
+        """Test failures preserve collector and RBAC evidence in metadata."""
+        collector = KubectlLogs()
+        subject = SubjectCtx(kind=ResourceKind.POD, name="api", namespace="default")
+        blob = collector._create_failure_blob(
+            {},
+            "text/plain",
+            RBACError("User cannot get pods/log"),
+            subject,
+            operation="logs",
+            resource_type="pods",
+        )
+
+        assert blob.metadata["data_gap"] is True
+        assert blob.metadata["category"] == "rbac"
+        assert blob.metadata["collector"] == "kubectl_logs"
+        assert blob.metadata["suggested_action"] == (
+            "kubectl auth can-i get pods --subresource=log -n default"
+        )
 
 
 class TestKubectlGet:
@@ -442,6 +467,53 @@ class TestRunKubectl:
 
         with pytest.raises(RBACError):
             await collector._run_kubectl(["get", "pods"], subject)
+
+    @pytest.mark.asyncio
+    @patch("asyncio.create_subprocess_exec")
+    @patch("subprocess.run")
+    async def test_run_kubectl_non_retryable_error_fails_fast(self, mock_run, mock_exec):
+        """Test non-transient kubectl failures are not retried."""
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout="/usr/local/bin/kubectl\n", stderr=""
+        )
+        mock_process = AsyncMock()
+        mock_process.returncode = 1
+        mock_process.communicate.return_value = (
+            b"",
+            b"Error from server (BadRequest): container is waiting to start",
+        )
+        mock_exec.return_value = mock_process
+
+        collector = KubectlLogs()
+        subject = SubjectCtx(kind=ResourceKind.POD, name="test-pod", namespace="default")
+
+        with pytest.raises(KubectlError):
+            await collector._run_kubectl(["logs", "test-pod"], subject, output_format="")
+        assert mock_exec.call_count == 1
+
+    @pytest.mark.asyncio
+    @patch("asyncio.sleep", new_callable=AsyncMock)
+    @patch("asyncio.create_subprocess_exec")
+    @patch("subprocess.run")
+    async def test_run_kubectl_transient_error_retries(self, mock_run, mock_exec, _mock_sleep):
+        """Test transient kubectl failures are retried."""
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout="/usr/local/bin/kubectl\n", stderr=""
+        )
+        fail_process = AsyncMock()
+        fail_process.returncode = 1
+        fail_process.communicate.return_value = (b"", b"i/o timeout")
+        ok_process = AsyncMock()
+        ok_process.returncode = 0
+        ok_process.communicate.return_value = (b'{"kind": "List", "items": []}', b"")
+        mock_exec.side_effect = [fail_process, ok_process]
+
+        collector = KubectlGet(resource_type="pods")
+        subject = SubjectCtx(kind=ResourceKind.POD, name="", namespace="default")
+
+        result = await collector._run_kubectl(["get", "pods"], subject)
+        assert result["kind"] == "List"
+        assert mock_exec.call_count == 2
 
     @pytest.mark.asyncio
     @patch("asyncio.create_subprocess_exec")

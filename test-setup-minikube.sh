@@ -2,7 +2,7 @@
 # -----------------------------------------------------------------------------
 # test-setup-minikube.sh
 # -----------------------------------------------------------------------------
-# Bootstrap a local Minikube cluster with artificial workloads that exercise
+# Bootstrap a local Kubernetes context with artificial workloads that exercise
 # *every* scenario listed in todo.md.  The goal is to create predictable
 # objects that kubectl-smart can diagnose / graph / forecast against.
 #
@@ -14,8 +14,27 @@
 set -euo pipefail
 
 NAMESPACE="kubectl-smart-fixtures"
+KUBECTL_SMART_CONTEXT="${KUBECTL_SMART_CONTEXT:-minikube}"
+SAFE_CONTEXT_PATTERN="${KUBECTL_SMART_SAFE_CONTEXT_PATTERN:-^(kind-|minikube$|colima$)}"
+REAL_KUBECTL="$(command -v kubectl || true)"
 
-echo "🔧 Preparing namespace ${NAMESPACE}..."
+if [ -z "$REAL_KUBECTL" ]; then
+  echo "❌ kubectl not found" >&2
+  exit 1
+fi
+
+if ! [[ "$KUBECTL_SMART_CONTEXT" =~ $SAFE_CONTEXT_PATTERN ]]; then
+  echo "❌ Refusing to use Kubernetes context '$KUBECTL_SMART_CONTEXT'." >&2
+  echo "   Set KUBECTL_SMART_CONTEXT to a local context matching: $SAFE_CONTEXT_PATTERN" >&2
+  exit 1
+fi
+
+export KUBECTL_SMART_CONTEXT
+kubectl() {
+  "$REAL_KUBECTL" --context "$KUBECTL_SMART_CONTEXT" "$@"
+}
+
+echo "🔧 Preparing namespace ${NAMESPACE} on context ${KUBECTL_SMART_CONTEXT}..."
 kubectl get ns "${NAMESPACE}" >/dev/null 2>&1 || kubectl create ns "${NAMESPACE}"
 
 # Helper: detect if an ingress controller is ready (Minikube-friendly)
@@ -528,4 +547,3 @@ if [[ "${1-}" == "--remove-metrics-server" ]]; then
 fi
 
 echo "✅  Fixture deployment complete.  Give Kubernetes ~60 seconds to settle."
-

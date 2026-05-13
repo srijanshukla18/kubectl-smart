@@ -1,6 +1,6 @@
 #!/bin/bash
 # Comprehensive test suite for kubectl-smart
-# Tests all commands, options, and variations against minikube
+# Tests all commands, options, and variations against an explicit local context
 
 # Continue on test failures - don't exit early
 # # set -e  # DISABLED  # Disabled to allow tests to continue on failure
@@ -17,6 +17,10 @@ NC='\033[0m' # No Color
 TOTAL_TESTS=0
 PASSED_TESTS=0
 FAILED_TESTS=0
+KUBECTL_SMART_CONTEXT="${KUBECTL_SMART_CONTEXT:-kind-kubectl-smart-demo}"
+KUBECTL_SMART_KUBECONFIG="${KUBECTL_SMART_KUBECONFIG:-$PWD/.kubectl-smart-demo.kubeconfig}"
+SAFE_CONTEXT_PATTERN="${KUBECTL_SMART_SAFE_CONTEXT_PATTERN:-^(kind-|minikube$|colima$)}"
+REAL_KUBECTL="$(command -v kubectl || true)"
 
 log_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
@@ -105,14 +109,25 @@ echo ""
 log_info "Checking prerequisites..."
 
 # Check if kubectl is available
-if ! command -v kubectl &> /dev/null; then
+if [ -z "$REAL_KUBECTL" ]; then
     log_error "kubectl not found. Please install kubectl."
     exit 1
 fi
 
-# Check current context (any context is fine)
-CURRENT_CONTEXT=$(kubectl config current-context 2>/dev/null || echo "none")
-log_success "kubectl context is $CURRENT_CONTEXT"
+if ! [[ "$KUBECTL_SMART_CONTEXT" =~ $SAFE_CONTEXT_PATTERN ]]; then
+    log_error "Refusing to use Kubernetes context '$KUBECTL_SMART_CONTEXT'."
+    log_error "Set KUBECTL_SMART_CONTEXT to a local context matching: $SAFE_CONTEXT_PATTERN"
+    exit 1
+fi
+export KUBECTL_SMART_CONTEXT
+export KUBECONFIG="$KUBECTL_SMART_KUBECONFIG"
+
+kubectl() {
+    "$REAL_KUBECTL" --context "$KUBECTL_SMART_CONTEXT" "$@"
+}
+
+log_success "using explicit local Kubernetes context $KUBECTL_SMART_CONTEXT"
+log_success "using kubeconfig $KUBECONFIG"
 
 # Check if kubectl-smart is available  
 log_info "Checking kubectl-smart availability..."
@@ -135,7 +150,7 @@ log_info "Testing kubectl-smart --version with 10s timeout..."
 run_test_with_output "Version command" "timeout 10s kubectl-smart --version" "kubectl-smart v0.1.0"
 
 # Get available resources for testing
-log_info "Discovering available resources in minikube..."
+log_info "Discovering available resources in $KUBECTL_SMART_CONTEXT..."
 
 # Find pods in different states - using safer approach
 set +e  # Temporarily disable exit on error for resource discovery
@@ -201,7 +216,7 @@ done
 
 
 if [ -n "$PENDING_POD" ] && [ -n "$PENDING_POD_NS" ]; then
-    run_test "diag pending pod" "kubectl-smart diag pod $PENDING_POD -n $PENDING_POD_NS" 0
+    run_test "diag pending pod" "kubectl-smart diag pod $PENDING_POD -n $PENDING_POD_NS" 2
 fi
 
 if [ -n "$FAILED_POD" ] && [ -n "$FAILED_POD_NS" ]; then
@@ -209,7 +224,7 @@ if [ -n "$FAILED_POD" ] && [ -n "$FAILED_POD_NS" ]; then
 fi
 
 if [ -n "$DEPLOYMENT" ] && [ -n "$DEPLOYMENT_NS" ]; then
-    run_test "diag deployment" "kubectl-smart diag deploy $DEPLOYMENT -n $DEPLOYMENT_NS" 2
+    run_test "diag deployment" "kubectl-smart diag deploy $DEPLOYMENT -n $DEPLOYMENT_NS" 0
     
 fi
 
@@ -309,13 +324,13 @@ run_test_with_output "global version flag" "kubectl-smart --version" "kubectl-sm
 echo "🎯 Testing CONTEXT and NAMESPACE options"
 echo "======================================="
 
-# Test explicit context specification (should work with minikube)
+# Test explicit context specification
 if [ -n "$RUNNING_POD" ] && [ -n "$RUNNING_POD_NS" ]; then
-    run_test "diag with explicit context" "kubectl-smart diag pod $RUNNING_POD -n $RUNNING_POD_NS --context=minikube" 2
-    run_test "graph with explicit context" "kubectl-smart graph pod $RUNNING_POD -n $RUNNING_POD_NS --context=minikube --upstream" 0
+    run_test "diag with explicit context" "kubectl-smart diag pod $RUNNING_POD -n $RUNNING_POD_NS --context=$KUBECTL_SMART_CONTEXT" 2
+    run_test "graph with explicit context" "kubectl-smart graph pod $RUNNING_POD -n $RUNNING_POD_NS --context=$KUBECTL_SMART_CONTEXT --upstream" 0
 fi
 
-run_test "top with explicit context" "kubectl-smart top default --context=minikube" 0
+run_test "top with explicit context" "kubectl-smart top default --context=$KUBECTL_SMART_CONTEXT" 0
 
 # =============================================================================
 # OUTPUT FORMAT TESTS
@@ -492,14 +507,14 @@ echo ""
 if [ $FAILED_TESTS -eq 0 ]; then
     log_success "All tests passed! 🎉"
     echo ""
-    echo "kubectl-smart is working perfectly on your minikube cluster!"
+    echo "kubectl-smart is working on local context $KUBECTL_SMART_CONTEXT!"
     echo "Ready for production use! 🚀"
     # exit 0  # Commented out to allow script continuation for debugging
 else
     log_error "$FAILED_TESTS tests failed"
     echo ""
     echo "Some tests failed. Please review the output above."
-    echo "This might indicate configuration issues or missing resources in your minikube cluster."
+    echo "This might indicate configuration issues or missing resources in local context $KUBECTL_SMART_CONTEXT."
     # exit 1  # Commented out to allow script continuation for debugging
 fi
 

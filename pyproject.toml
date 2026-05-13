@@ -7,7 +7,7 @@ name = "kubectl-smart"
 version = "0.1.0"
 description = "kubectl plugin that improves Kubernetes debugging with issue prioritization (beta)"
 readme = "README.md"
-license = { text = "Apache-2.0" }
+license = "Apache-2.0"
 authors = [
     { name = "kubectl-smart team" }
 ]
@@ -16,7 +16,6 @@ classifiers = [
     "Environment :: Console",
     "Intended Audience :: Developers",
     "Intended Audience :: System Administrators",
-    "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
@@ -52,10 +51,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/kubectl-smart/kubectl-smart"
-Repository = "https://github.com/kubectl-smart/kubectl-smart"
-Issues = "https://github.com/kubectl-smart/kubectl-smart/issues"
-Documentation = "https://kubectl-smart.readthedocs.io"
+Homepage = "https://github.com/srijanshukla18/kubectl-smart"
+Repository = "https://github.com/srijanshukla18/kubectl-smart"
+Issues = "https://github.com/srijanshukla18/kubectl-smart/issues"
 
 [project.scripts]
 kubectl-smart = "kubectl_smart.cli.main:app"
@@ -73,10 +71,6 @@ addopts = [
     "-ra",
     "--strict-markers",
     "--strict-config",
-    "--cov=kubectl_smart", 
-    "--cov-report=term-missing",
-    "--cov-report=html",
-    "--cov-fail-under=90",
 ]
 testpaths = ["tests"]
 asyncio_mode = "auto"

@@ -53,6 +53,7 @@
 "status_CrashLoopBackOff" = 85.0
 "status_ImagePullBackOff" = 75.0
 "status_ErrImagePull" = 75.0
+"status_CreateContainerConfigError" = 90.0
 "status_Running" = 0.0
 "status_Active" = 0.0
 "status_Ready" = 0.0

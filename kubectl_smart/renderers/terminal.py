@@ -69,7 +69,7 @@ class TerminalRenderer:
             
             # Root Cause - highest-score issue
             if result.root_cause:
-                console.print(f"\n🔴 ROOT CAUSE")
+                console.print(f"\n🔴 LIKELY ROOT CAUSE")
                 self._render_issue(console, result.root_cause, show_details=True)
             
             # Contributing Factors - next 2 issues (if ≥ 50)
@@ -108,6 +108,8 @@ class TerminalRenderer:
                 console.print(f"\n💡 SUGGESTED ACTIONS")
                 for i, action in enumerate(result.suggested_actions, 1):
                     console.print(f"  {i}. {action}")
+
+            self._render_data_gaps(console, result.data_gaps)
             
             # Performance info
             console.print(f"\n⏱️  Analysis completed in {result.analysis_duration:.2f}s")
@@ -133,6 +135,8 @@ class TerminalRenderer:
             console.print(f"  Dependencies: {len(result.edges)}")
             console.print(f"  Upstream: {result.upstream_count}")
             console.print(f"  Downstream: {result.downstream_count}")
+
+            self._render_data_gaps(console, result.data_gaps)
             
             console.print(f"\n⏱️  Analysis completed in {result.analysis_duration:.2f}s")
         
@@ -196,10 +200,22 @@ class TerminalRenderer:
             if not result.capacity_warnings and not result.certificate_warnings:
                 console.print("\n✅ No capacity or certificate issues predicted")
                 console.print("[dim]Note: Some signals require metrics-server and kubelet metrics. If unavailable, results may be limited.[/dim]")
+
+            self._render_data_gaps(console, result.data_gaps)
             
             console.print(f"\n⏱️  Analysis completed in {result.analysis_duration:.2f}s")
         
         return capture.get()
+
+    def _render_data_gaps(self, console: Console, data_gaps: List[str]) -> None:
+        """Render unavailable signals so users know how complete the analysis is."""
+        if not data_gaps:
+            return
+
+        console.print(f"\n⚪ DATA GAPS ({len(data_gaps)})")
+        console.print("[dim]Analysis used the available signals; these collectors were incomplete:[/dim]")
+        for gap in data_gaps[:5]:
+            console.print(f"  [dim]• {gap}[/dim]")
     
     def render_error(self, error_msg: str, details: Optional[str] = None) -> str:
         """Render error message with optional details"""
@@ -239,6 +255,11 @@ class TerminalRenderer:
         
         if issue.critical_path:
             console.print("    [red]🎯 On critical dependency path[/red]")
+
+        if show_details and issue.evidence:
+            console.print("    [dim]Evidence:[/dim]")
+            for evidence in issue.evidence[:5]:
+                console.print(f"    [dim]• {evidence}[/dim]")
         
         if show_details and issue.suggested_actions:
             console.print("    [dim]Suggested actions:[/dim]")
@@ -284,7 +305,9 @@ class TerminalRenderer:
             'NotReady': 'red',
             'Unavailable': 'red',
             'Error': 'red',
+            'CrashLoopBackOff': 'red',
+            'ImagePullBackOff': 'red',
+            'ErrImagePull': 'red',
+            'CreateContainerConfigError': 'red',
         }
         return style_map.get(status, 'white')
-
-

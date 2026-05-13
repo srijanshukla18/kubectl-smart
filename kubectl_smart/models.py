@@ -12,7 +12,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ResourceKind(str, Enum):
@@ -68,8 +68,7 @@ class RawBlob(BaseModel):
     content_type: str = Field(default="application/json")
     metadata: Dict[str, Any] = Field(default_factory=dict)
     
-    class Config:
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 class ResourceRecord(BaseModel):
@@ -132,22 +131,18 @@ class Issue(BaseModel):
     critical_path: bool = Field(default=False, description="Is this issue on a critical path")
     contributing_factors: List[str] = Field(default_factory=list)
     suggested_actions: List[str] = Field(default_factory=list)
+    evidence: List[str] = Field(default_factory=list, description="Specific observed lines or facts supporting this issue")
     related_events: List[str] = Field(default_factory=list)
     metadata: Dict[str, Any] = Field(default_factory=dict)
     
-    @validator('severity', pre=True)
-    def validate_severity(cls, v, values):
-        """Auto-determine severity from score if not provided"""
+    @field_validator('severity', mode='before')
+    @classmethod
+    def validate_severity(cls, v):
+        """Normalize string severity values to the enum."""
         if isinstance(v, str):
             return IssueSeverity(v)
-        
-        score = values.get('score', 0)
-        if score >= 90:
-            return IssueSeverity.CRITICAL
-        elif score >= 50:
-            return IssueSeverity.WARNING
-        else:
-            return IssueSeverity.INFO
+
+        return v
     
     def to_display_dict(self) -> Dict[str, Any]:
         """Convert to dictionary suitable for display rendering"""
@@ -158,6 +153,7 @@ class Issue(BaseModel):
             'description': self.description,
             'critical_path': self.critical_path,
             'suggested_actions': self.suggested_actions,
+            'evidence': self.evidence,
             'timestamp': self.timestamp.isoformat() if self.timestamp else None,
         }
 
@@ -205,6 +201,7 @@ class DiagnosisResult(BaseModel):
     contributing_factors: List[Issue] = Field(default_factory=list)
     suggested_actions: List[str] = Field(default_factory=list)
     recent_events: List[ResourceRecord] = Field(default_factory=list)
+    data_gaps: List[str] = Field(default_factory=list, description="Collectors or signals that were unavailable")
     analysis_duration: float = Field(..., description="Analysis time in seconds")
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     
@@ -230,6 +227,7 @@ class GraphResult(BaseModel):
     ascii_graph: str = Field(default="", description="ASCII representation")
     upstream_count: int = 0
     downstream_count: int = 0
+    data_gaps: List[str] = Field(default_factory=list, description="Collectors or signals that were unavailable")
     analysis_duration: float = Field(..., description="Analysis time in seconds")
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
@@ -242,6 +240,7 @@ class TopResult(BaseModel):
     capacity_warnings: List[Dict[str, Any]] = Field(default_factory=list)
     certificate_warnings: List[Dict[str, Any]] = Field(default_factory=list)
     forecast_horizon_hours: int = Field(default=48)
+    data_gaps: List[str] = Field(default_factory=list, description="Collectors or signals that were unavailable")
     analysis_duration: float = Field(..., description="Analysis time in seconds")
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 

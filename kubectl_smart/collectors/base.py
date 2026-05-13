@@ -36,6 +36,11 @@ class KubectlError(CollectorError):
     pass
 
 
+class TransientKubectlError(KubectlError):
+    """Raised when kubectl fails in a way that is worth retrying"""
+    pass
+
+
 class RBACError(CollectorError):
     """Raised when RBAC permissions are insufficient"""
     pass
@@ -148,7 +153,7 @@ class Collector(ABC):
                             raise RBACError(f"RBAC permission denied: {error_msg}")
                         # Retry on transient network/http errors
                         if any(x in lower for x in ['timeout', 'temporarily unavailable', 'i/o timeout', 'connection refused']):
-                            raise KubectlError(error_msg)
+                            raise TransientKubectlError(error_msg)
                         # Non-retryable
                         raise KubectlError(error_msg)
                     output_str = stdout.decode()
@@ -158,7 +163,7 @@ class Collector(ABC):
                         except json.JSONDecodeError as e:
                             raise CollectorError(f"Failed to parse kubectl JSON output: {e}")
                     return {"raw": output_str}
-            except (KubectlError, asyncio.TimeoutError) as e:
+            except (TransientKubectlError, asyncio.TimeoutError) as e:
                 last_error = e
                 attempt += 1
                 await asyncio.sleep(0.5 * attempt)
@@ -172,14 +177,87 @@ class Collector(ABC):
             raise last_error
         raise CollectorError("kubectl command failed (retries exhausted)")
     
-    def _create_blob(self, data: any, content_type: str = "application/json") -> RawBlob:
+    def _create_blob(
+        self,
+        data: any,
+        content_type: str = "application/json",
+        metadata: Optional[Dict[str, any]] = None,
+    ) -> RawBlob:
         """Create a RawBlob from collected data"""
         return RawBlob(
             data=data,
             source=self.name,
             content_type=content_type,
-            timestamp=datetime.utcnow()
+            timestamp=datetime.utcnow(),
+            metadata=metadata or {},
         )
+
+    def _create_failure_blob(
+        self,
+        data: any,
+        content_type: str,
+        error: Exception,
+        subject: SubjectCtx,
+        operation: str,
+        resource_type: Optional[str] = None,
+    ) -> RawBlob:
+        """Create an empty blob that preserves why a signal was unavailable."""
+        error_text = str(error).strip()
+        lower = error_text.lower()
+        category = "rbac" if isinstance(error, RBACError) else "unavailable"
+        if "timed out" in lower or "timeout" in lower:
+            category = "timeout"
+        elif any(token in lower for token in ("forbidden", "unauthorized", "permission denied")):
+            category = "rbac"
+        elif "not found" in lower:
+            category = "not_found"
+
+        metadata = {
+            "data_gap": True,
+            "collector": self.name,
+            "operation": operation,
+            "resource_type": resource_type,
+            "subject": subject.full_name,
+            "category": category,
+            "error": error_text,
+            "suggested_action": self._suggested_gap_action(
+                operation,
+                resource_type,
+                subject,
+                category,
+                lower,
+            ),
+        }
+        return self._create_blob(data, content_type, metadata)
+
+    def _suggested_gap_action(
+        self,
+        operation: str,
+        resource_type: Optional[str],
+        subject: SubjectCtx,
+        category: str,
+        error_lower: str,
+    ) -> Optional[str]:
+        """Return a targeted check for unavailable signals."""
+        if operation == "logs" and "waiting to start" in error_lower:
+            return "Container has not started; rely on events and describe output"
+        if operation == "metrics" and "metrics api not available" in error_lower:
+            return "Install or enable metrics-server for capacity forecasting"
+        if category != "rbac":
+            return None
+
+        namespace_arg = f" -n {subject.namespace}" if subject.namespace else ""
+        if operation == "logs":
+            return f"kubectl auth can-i get pods --subresource=log{namespace_arg}"
+        if operation == "events":
+            return f"kubectl auth can-i list events{namespace_arg}"
+        if operation in {"get", "describe"} and resource_type:
+            return f"kubectl auth can-i get {resource_type}{namespace_arg}"
+        if operation == "metrics":
+            return f"kubectl auth can-i get pods.metrics.k8s.io{namespace_arg}"
+        if operation == "kubelet":
+            return "kubectl auth can-i get nodes/proxy"
+        return None
 
 
 class KubectlGet(Collector):
@@ -217,7 +295,14 @@ class KubectlGet(Collector):
                 error=str(e)
             )
             # Return empty blob on failure for graceful degradation
-            return self._create_blob({}, "application/json")
+            return self._create_failure_blob(
+                {},
+                "application/json",
+                e,
+                subject,
+                operation="get",
+                resource_type=self.resource_type,
+            )
 
 
 class KubectlDescribe(Collector):
@@ -244,7 +329,14 @@ class KubectlDescribe(Collector):
                 subject=subject.full_name,
                 error=str(e)
             )
-            return self._create_blob({}, "text/plain")
+            return self._create_failure_blob(
+                {},
+                "text/plain",
+                e,
+                subject,
+                operation="describe",
+                resource_type=self.resource_type,
+            )
 
 
 class KubectlEvents(Collector):
@@ -271,7 +363,14 @@ class KubectlEvents(Collector):
                 subject=subject.full_name,
                 error=str(e)
             )
-            return self._create_blob({}, "application/json")
+            return self._create_failure_blob(
+                {},
+                "application/json",
+                e,
+                subject,
+                operation="events",
+                resource_type="events",
+            )
 
 
 class KubectlLogs(Collector):
@@ -300,7 +399,14 @@ class KubectlLogs(Collector):
                 subject=subject.full_name,
                 error=str(e)
             )
-            return self._create_blob({}, "text/plain")
+            return self._create_failure_blob(
+                {},
+                "text/plain",
+                e,
+                subject,
+                operation="logs",
+                resource_type="pods",
+            )
 
 
 class MetricsServer(Collector):
@@ -329,7 +435,14 @@ class MetricsServer(Collector):
                 error=str(e)
             )
             # Metrics server is optional, return empty blob
-            return self._create_blob({}, "text/plain")
+            return self._create_failure_blob(
+                {},
+                "text/plain",
+                e,
+                subject,
+                operation="metrics",
+                resource_type="pods",
+            )
 
 
 class KubeletMetricsScrape(Collector):
@@ -372,7 +485,14 @@ class KubeletMetricsScrape(Collector):
 
         except Exception as e:
             logger.info("Kubelet metrics scrape unavailable", error=str(e))
-            return self._create_blob("", "text/plain")
+            return self._create_failure_blob(
+                "",
+                "text/plain",
+                e,
+                subject,
+                operation="kubelet",
+                resource_type="nodes",
+            )
 
 class CollectorRegistry:
     """Registry for managing and creating collectors"""

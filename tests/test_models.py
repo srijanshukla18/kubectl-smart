@@ -293,7 +293,21 @@ class TestIssue:
         assert "title" in display_dict
         assert "severity" in display_dict
         assert "score" in display_dict
+        assert "evidence" in display_dict
         assert display_dict["severity"] == "critical"
+
+    def test_issue_evidence_default(self):
+        """Test Issue evidence defaults to an empty list."""
+        issue = Issue(
+            resource_uid="test",
+            title="Test",
+            description="Test",
+            severity=IssueSeverity.INFO,
+            score=10.0,
+            reason="Test",
+            message="Test",
+        )
+        assert issue.evidence == []
 
     def test_issue_critical_path_default(self):
         """Test Issue critical_path defaults to False"""

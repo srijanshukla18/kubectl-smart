@@ -8,6 +8,8 @@ This module implements the exact three commands specified in the technical requi
 """
 
 import asyncio
+import logging
+import sys
 from enum import Enum
 from typing import Optional
 
@@ -19,8 +21,18 @@ import re
 
 # Lazy imports to speed up --help
 
-def _configure_logging():
-    """Configure structured logging lazily"""
+def _configure_logging(debug: bool = False):
+    """Configure structured logging lazily.
+
+    Normal CLI output should stay clean; diagnostics are printed intentionally by
+    renderers. Internal collector/parser logs are only emitted with --debug.
+    """
+    logging.basicConfig(
+        format="%(message)s",
+        stream=sys.stderr,
+        level=logging.DEBUG if debug else logging.CRITICAL,
+        force=True,
+    )
     structlog.configure(
         processors=[
             structlog.stdlib.filter_by_level,
@@ -52,11 +64,17 @@ class ResourceType(str, Enum):
     """Supported resource types for diag and graph commands"""
     POD = "pod"
     DEPLOYMENT = "deploy"
+    DEPLOYMENT_FULL = "deployment"
     STATEFULSET = "sts" 
+    STATEFULSET_FULL = "statefulset"
     JOB = "job"
     SERVICE = "svc"
+    SERVICE_FULL = "service"
+    INGRESS = "ingress"
     REPLICASET = "rs"
+    REPLICASET_FULL = "replicaset"
     DAEMONSET = "ds"
+    DAEMONSET_FULL = "daemonset"
 
 
 NAME_PATTERN = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
@@ -82,6 +100,15 @@ def _validate_context(context: Optional[str]) -> None:
     if not CONTEXT_PATTERN.fullmatch(context):
         raise typer.BadParameter("Context may only contain letters, numbers, underscore, dot, or dash.")
 
+
+def _resolve_context(context: Optional[str]) -> Optional[str]:
+    """Use an explicit context, or a demo/test default from the environment."""
+    if context:
+        return context
+
+    import os
+
+    return os.getenv("KUBECTL_SMART_CONTEXT") or None
 
 
 
@@ -111,13 +138,9 @@ def main(
     [bold]Performance:[/bold] ≤3s on 2k-resource clusters | Read-only operations
     """
     # Configure logging when actually needed
-    _configure_logging()
+    _configure_logging(debug=debug)
     
     if debug:
-        # Enable debug logging
-        import logging
-        logging.basicConfig(level=logging.DEBUG)
-        
         # Also set environment variable for other components
         import os
         os.environ['KUBECTL_SMART_DEBUG'] = '1'
@@ -173,6 +196,7 @@ def diag(
     if name is not None:
         _validate_resource_name(name)  # type: ignore[arg-type]
     _validate_namespace(namespace)
+    context = _resolve_context(context)
     _validate_context(context)
 
     # Lazy import models
@@ -182,11 +206,17 @@ def diag(
     kind_map = {
         ResourceType.POD: ResourceKind.POD,
         ResourceType.DEPLOYMENT: ResourceKind.DEPLOYMENT,
+        ResourceType.DEPLOYMENT_FULL: ResourceKind.DEPLOYMENT,
         ResourceType.STATEFULSET: ResourceKind.STATEFULSET,
+        ResourceType.STATEFULSET_FULL: ResourceKind.STATEFULSET,
         ResourceType.JOB: ResourceKind.JOB,
         ResourceType.SERVICE: ResourceKind.SERVICE,
+        ResourceType.SERVICE_FULL: ResourceKind.SERVICE,
+        ResourceType.INGRESS: ResourceKind.INGRESS,
         ResourceType.REPLICASET: ResourceKind.REPLICASET,
+        ResourceType.REPLICASET_FULL: ResourceKind.REPLICASET,
         ResourceType.DAEMONSET: ResourceKind.DAEMONSET,
+        ResourceType.DAEMONSET_FULL: ResourceKind.DAEMONSET,
     }
 
     # Handle batch mode (--all)
@@ -353,13 +383,14 @@ def graph(
     """
     _validate_resource_name(name)
     _validate_namespace(namespace)
+    context = _resolve_context(context)
     _validate_context(context)
     
     # Default to downstream if neither specified
     if not upstream and not downstream:
         downstream = True
     
-    direction = "upstream" if upstream else "downstream"
+    direction = "both" if upstream and downstream else "upstream" if upstream else "downstream"
     
     # Lazy import models
     from ..models import ResourceKind, SubjectCtx
@@ -368,11 +399,17 @@ def graph(
     kind_map = {
         ResourceType.POD: ResourceKind.POD,
         ResourceType.DEPLOYMENT: ResourceKind.DEPLOYMENT,
+        ResourceType.DEPLOYMENT_FULL: ResourceKind.DEPLOYMENT,
         ResourceType.STATEFULSET: ResourceKind.STATEFULSET,
+        ResourceType.STATEFULSET_FULL: ResourceKind.STATEFULSET,
         ResourceType.JOB: ResourceKind.JOB,
         ResourceType.SERVICE: ResourceKind.SERVICE,
+        ResourceType.SERVICE_FULL: ResourceKind.SERVICE,
+        ResourceType.INGRESS: ResourceKind.INGRESS,
         ResourceType.REPLICASET: ResourceKind.REPLICASET,
+        ResourceType.REPLICASET_FULL: ResourceKind.REPLICASET,
         ResourceType.DAEMONSET: ResourceKind.DAEMONSET,
+        ResourceType.DAEMONSET_FULL: ResourceKind.DAEMONSET,
     }
     
     # Create subject context
@@ -427,6 +464,7 @@ def top(
       kubectl-smart top staging
     """
     _validate_namespace(namespace)
+    context = _resolve_context(context)
     _validate_context(context)
     
     # Lazy import models
