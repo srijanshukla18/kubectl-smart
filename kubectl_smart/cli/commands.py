@@ -776,8 +776,12 @@ class TopCommand(BaseCommand):
             )
             
             # Predict certificate expiry
+            secret_inventory_complete = not any(
+                gap.startswith("get secrets") for gap in self.data_gaps
+            )
             certificate_warnings = self.forecasting_engine.predict_certificate_expiry(
-                namespace_resources
+                namespace_resources,
+                secret_inventory_complete=secret_inventory_complete,
             )
             
             analysis_duration = time.time() - start_time

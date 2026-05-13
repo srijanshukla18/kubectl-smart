@@ -892,6 +892,50 @@ class TestTopCommand:
         assert "DATA GAPS" in result.output
         assert "get secrets collector unavailable: registry unavailable" in result.output
 
+    @pytest.mark.asyncio
+    @patch("kubectl_smart.cli.commands.collector_registry")
+    @patch("kubectl_smart.cli.commands.parser_registry")
+    async def test_execute_marks_secret_inventory_incomplete_on_secret_gap(
+        self, mock_parser_registry, mock_collector_registry
+    ):
+        """Test top does not treat blocked Secret collection as complete inventory."""
+        captured = {}
+
+        class FakeForecastingEngine:
+            def predict_capacity_issues(self, resources, metrics_data):
+                return []
+
+            def predict_certificate_expiry(
+                self,
+                resources,
+                secret_inventory_complete=True,
+            ):
+                captured["secret_inventory_complete"] = secret_inventory_complete
+                return []
+
+        def create_collector(name, **kwargs):
+            if kwargs.get("resource_type") == "secrets":
+                raise RuntimeError("registry unavailable")
+            collector = MagicMock()
+            collector.name = f"{name}_{kwargs.get('resource_type', 'generic')}"
+            collector.collect = AsyncMock(
+                return_value=MagicMock(data={}, source="test")
+            )
+            return collector
+
+        mock_collector_registry.create.side_effect = create_collector
+        mock_parser_registry.parse.return_value = []
+
+        cmd = TopCommand()
+        cmd.forecasting_engine = FakeForecastingEngine()
+        subject = SubjectCtx(
+            kind=ResourceKind.NAMESPACE, name="default", namespace="default"
+        )
+        result = await cmd.execute(subject)
+
+        assert result.exit_code == 0
+        assert captured["secret_inventory_complete"] is False
+
 
 class TestCollectData:
     """Tests for _collect_data method"""

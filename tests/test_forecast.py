@@ -177,8 +177,8 @@ class TestPredictCertificateExpiry:
         warnings = engine.predict_certificate_expiry([secret])
         assert warnings == []
 
-    def test_predict_certificate_expiry_ingress_reference(self):
-        """Test ingress TLS reference is detected"""
+    def test_predict_certificate_expiry_ingress_missing_secret(self):
+        """Test ingress TLS reference warns when the Secret is missing."""
         engine = ForecastingEngine()
         ingress = ResourceRecord(
             kind=ResourceKind.INGRESS,
@@ -199,8 +199,66 @@ class TestPredictCertificateExpiry:
         warnings = engine.predict_certificate_expiry([ingress])
 
         assert len(warnings) == 1
-        assert warnings[0]["type"] == "certificate_reference"
+        assert warnings[0]["type"] == "missing_certificate_secret"
         assert warnings[0]["secret_name"] == "my-tls-secret"
+
+    def test_predict_certificate_expiry_ingress_existing_secret_is_not_warning(self):
+        """Test ingress TLS references are quiet when the Secret was collected."""
+        engine = ForecastingEngine()
+        ingress = ResourceRecord(
+            kind=ResourceKind.INGRESS,
+            name="my-ingress",
+            uid="ingress-uid",
+            namespace="default",
+            properties={
+                "spec": {
+                    "tls": [
+                        {
+                            "secretName": "my-tls-secret",
+                            "hosts": ["example.com"],
+                        }
+                    ]
+                }
+            },
+        )
+        secret = ResourceRecord(
+            kind=ResourceKind.SECRET,
+            name="my-tls-secret",
+            uid="secret-uid",
+            namespace="default",
+            properties={"type": "kubernetes.io/tls", "data": {}},
+        )
+
+        warnings = engine.predict_certificate_expiry([ingress, secret])
+
+        assert warnings == []
+
+    def test_predict_certificate_expiry_skips_missing_secret_when_inventory_incomplete(self):
+        """Test Secret RBAC gaps do not become missing-Secret warnings."""
+        engine = ForecastingEngine()
+        ingress = ResourceRecord(
+            kind=ResourceKind.INGRESS,
+            name="my-ingress",
+            uid="ingress-uid",
+            namespace="default",
+            properties={
+                "spec": {
+                    "tls": [
+                        {
+                            "secretName": "my-tls-secret",
+                            "hosts": ["example.com"],
+                        }
+                    ]
+                }
+            },
+        )
+
+        warnings = engine.predict_certificate_expiry(
+            [ingress],
+            secret_inventory_complete=False,
+        )
+
+        assert warnings == []
 
     def test_predict_certificate_expiry_ingress_no_tls(self):
         """Test ingress without TLS produces no warnings"""

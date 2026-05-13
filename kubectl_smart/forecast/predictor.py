@@ -70,11 +70,16 @@ class ForecastingEngine:
         
         return actionable
     
-    def predict_certificate_expiry(self, resources: List[ResourceRecord]) -> List[Dict[str, any]]:
+    def predict_certificate_expiry(
+        self,
+        resources: List[ResourceRecord],
+        secret_inventory_complete: bool = True,
+    ) -> List[Dict[str, any]]:
         """Predict certificate expiry issues
         
         Args:
             resources: List of all resources
+            secret_inventory_complete: Whether missing Secret references can be trusted
             
         Returns:
             List of certificates expiring within warning period
@@ -86,11 +91,16 @@ class ForecastingEngine:
         for secret in secrets:
             cert_warnings = self._check_secret_certificates(secret)
             warnings.extend(cert_warnings)
+        secret_keys = {(secret.namespace, secret.name) for secret in secrets}
         
         # Check ingress resources for TLS certificates
         ingresses = [r for r in resources if r.kind.value == "Ingress"]
         for ingress in ingresses:
-            cert_warnings = self._check_ingress_certificates(ingress)
+            cert_warnings = self._check_ingress_certificates(
+                ingress,
+                secret_keys,
+                secret_inventory_complete,
+            )
             warnings.extend(cert_warnings)
         
         return warnings
@@ -333,8 +343,13 @@ class ForecastingEngine:
         
         return warnings
     
-    def _check_ingress_certificates(self, ingress: ResourceRecord) -> List[Dict[str, any]]:
-        """Check ingress for TLS certificate references"""
+    def _check_ingress_certificates(
+        self,
+        ingress: ResourceRecord,
+        secret_keys: set[tuple[Optional[str], str]],
+        secret_inventory_complete: bool,
+    ) -> List[Dict[str, any]]:
+        """Check ingress TLS references for missing certificate Secrets."""
         warnings = []
         
         spec = ingress.get_property('spec', {})
@@ -344,17 +359,19 @@ class ForecastingEngine:
             secret_name = tls_config.get('secretName')
             hosts = tls_config.get('hosts', [])
             
-            if secret_name:
-                # This is a reference check - actual certificate parsing would be done
-                # when processing the referenced secret
+            if (
+                secret_name
+                and secret_inventory_complete
+                and (ingress.namespace, secret_name) not in secret_keys
+            ):
                 warnings.append({
-                    'type': 'certificate_reference',
+                    'type': 'missing_certificate_secret',
                     'resource': ingress.full_name,
                     'certificate_type': 'ingress_tls',
                     'secret_name': secret_name,
                     'hosts': hosts,
-                    'message': f"Ingress {ingress.name} references TLS secret {secret_name}",
-                    'suggested_action': f"Verify certificate validity for secret {secret_name}"
+                    'message': f"Ingress {ingress.name} references missing TLS secret {secret_name}",
+                    'suggested_action': f"Create or restore TLS secret {secret_name}"
                 })
         
         return warnings
