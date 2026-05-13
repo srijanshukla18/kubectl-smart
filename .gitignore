@@ -43,3 +43,5 @@ htmlcov/
 # Local demo cluster state
 .kubectl-smart-demo.kubeconfig
 .kubectl-smart-demo.kubeconfig.lock
+.kubectl-smart-rbac.kubeconfig
+.kubectl-smart-rbac.kubeconfig.lock

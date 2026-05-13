@@ -10,6 +10,10 @@ These scenarios live in `kubectl-smart-complex` and do not modify the existing
 kubectl get pods -n kubectl-smart-complex
 ```
 
+The setup also writes `.kubectl-smart-rbac.kubeconfig`, a restricted kubeconfig
+for validating how `kubectl-smart` behaves when events and pod logs are hidden
+by RBAC.
+
 ## 3-Minute Recording Path
 
 ### Case 1: Checkout Cascade
@@ -36,6 +40,26 @@ kubectl-smart diag pod fulfillment-worker-0 -n kubectl-smart-complex
 kubectl-smart graph pod fulfillment-worker-0 -n kubectl-smart-complex --upstream --downstream
 kubectl get events -n kubectl-smart-complex --field-selector involvedObject.name=fulfillment-worker-0 --sort-by=.lastTimestamp
 ```
+
+## Optional: RBAC Data-Gap Validation
+
+This proves the tool still gives a bounded diagnosis when the Kubernetes API
+does not allow every collector to run.
+
+```bash
+KUBECONFIG=.kubectl-smart-rbac.kubeconfig kubectl get pods -n kubectl-smart-complex --no-headers
+KUBECONFIG=.kubectl-smart-rbac.kubeconfig kubectl auth can-i list events -n kubectl-smart-complex
+KUBECONFIG=.kubectl-smart-rbac.kubeconfig kubectl logs checkout-api-0 -n kubectl-smart-complex --tail=5
+KUBECONFIG=.kubectl-smart-rbac.kubeconfig kubectl-smart diag pod checkout-api-0 -n kubectl-smart-complex
+```
+
+Expected behavior:
+
+- `kubectl get pods` succeeds.
+- `kubectl auth can-i list events` prints `no`.
+- `kubectl logs` returns a Forbidden error for `pods/log`.
+- `kubectl-smart diag` still reports the pod status evidence, but includes
+  `DATA GAPS` entries for both events and logs with the exact RBAC errors.
 
 ## Cleanup
 

@@ -8,6 +8,7 @@ set -euo pipefail
 ACTION="${1:-apply}"
 NAMESPACE="${NAMESPACE:-kubectl-smart-complex}"
 KUBECTL_SMART_CONTEXT="${KUBECTL_SMART_CONTEXT:-$(kubectl config current-context 2>/dev/null || true)}"
+RBAC_KUBECONFIG="${RBAC_KUBECONFIG:-.kubectl-smart-rbac.kubeconfig}"
 SAFE_CONTEXT_PATTERN="${KUBECTL_SMART_SAFE_CONTEXT_PATTERN:-^(kind-|minikube$|colima$)}"
 REAL_KUBECTL="$(command -v kubectl || true)"
 
@@ -354,6 +355,96 @@ spec:
 EOF
 }
 
+apply_rbac_limited_viewer() {
+  log "Applying RBAC-limited viewer for data-gap validation..."
+
+  cat <<EOF | kubectl apply -n "$NAMESPACE" -f -
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kubectl-smart-limited-reader
+  labels:
+    demo.kubectl-smart/story: rbac-data-gaps
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: kubectl-smart-limited-reader
+  labels:
+    demo.kubectl-smart/story: rbac-data-gaps
+rules:
+- apiGroups: [""]
+  resources:
+  - pods
+  - services
+  - endpoints
+  - configmaps
+  - secrets
+  - persistentvolumeclaims
+  - serviceaccounts
+  verbs: ["get", "list"]
+- apiGroups: ["apps"]
+  resources:
+  - deployments
+  - replicasets
+  - statefulsets
+  - daemonsets
+  verbs: ["get", "list"]
+- apiGroups: ["networking.k8s.io"]
+  resources:
+  - ingresses
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kubectl-smart-limited-reader
+  labels:
+    demo.kubectl-smart/story: rbac-data-gaps
+subjects:
+- kind: ServiceAccount
+  name: kubectl-smart-limited-reader
+  namespace: ${NAMESPACE}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: kubectl-smart-limited-reader
+EOF
+
+  local cluster_name server ca_data token
+  cluster_name="$(kubectl config view --raw --minify -o jsonpath='{.clusters[0].name}')"
+  server="$(kubectl config view --raw --minify -o jsonpath='{.clusters[0].cluster.server}')"
+  ca_data="$(kubectl config view --raw --minify -o jsonpath='{.clusters[0].cluster.certificate-authority-data}')"
+  token="$(kubectl -n "$NAMESPACE" create token kubectl-smart-limited-reader --duration=2h)"
+
+  rm -f "$RBAC_KUBECONFIG"
+  (
+    umask 077
+    cat > "$RBAC_KUBECONFIG" <<EOF
+apiVersion: v1
+kind: Config
+clusters:
+- name: ${cluster_name}
+  cluster:
+    server: ${server}
+    certificate-authority-data: ${ca_data}
+users:
+- name: kubectl-smart-limited-reader
+  user:
+    token: ${token}
+contexts:
+- name: kubectl-smart-rbac-demo
+  context:
+    cluster: ${cluster_name}
+    namespace: ${NAMESPACE}
+    user: kubectl-smart-limited-reader
+current-context: kubectl-smart-rbac-demo
+EOF
+  )
+
+  log "Wrote restricted kubeconfig: $RBAC_KUBECONFIG"
+}
+
 print_runbook() {
   cat <<EOF
 
@@ -369,6 +460,9 @@ Case 2: fulfillment config trap
   kubectl-smart diag pod fulfillment-worker-0 -n $NAMESPACE
   kubectl-smart graph pod fulfillment-worker-0 -n $NAMESPACE --upstream --downstream
   kubectl get events -n $NAMESPACE --field-selector involvedObject.name=fulfillment-worker-0 --sort-by=.lastTimestamp
+
+RBAC data-gap validation
+  KUBECONFIG=$RBAC_KUBECONFIG kubectl-smart diag pod checkout-api-0 -n $NAMESPACE
 EOF
 }
 
@@ -378,6 +472,7 @@ case "$ACTION" in
     ensure_namespace
     apply_checkout_cascade
     apply_fulfillment_config_trap
+    apply_rbac_limited_viewer
     print_runbook
     ;;
   cleanup|destroy)

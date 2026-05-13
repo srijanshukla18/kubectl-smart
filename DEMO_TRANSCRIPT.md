@@ -168,6 +168,25 @@ Say:
 > The project is open source, early, and I would love feedback from people who
 > debug real clusters.
 
+## Optional Trust Cutaway
+
+Use this only if you want to show the safety behavior instead of the shorter
+close.
+
+Run:
+
+```bash
+KUBECONFIG=.kubectl-smart-rbac.kubeconfig kubectl-smart diag pod checkout-api-0 -n kubectl-smart-complex
+```
+
+Say:
+
+> One design choice I care about is not pretending. This kubeconfig can read the
+> pod, but it cannot read Events or pod logs. So `kubectl-smart` still gives me
+> the diagnosis it can support from pod status, and then it shows those missing
+> collectors under `DATA GAPS` with the exact RBAC errors. That is the behavior I
+> want in real incidents: useful, but honest about what it could not see.
+
 ## Shorter 60-Second Version
 
 Say:
