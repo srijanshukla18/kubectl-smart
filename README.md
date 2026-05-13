@@ -73,6 +73,7 @@ Data sources and behavior:
 Requirements and graceful degradation:
 - For full predictions, ensure metrics-server is installed and kubelet metrics accessible via API proxy.
 - If metrics-server is absent or kubelet metrics are blocked by RBAC, `top` still runs and prints a note indicating limited signals.
+- Set `KUBECTL_SMART_TIMEOUT=<seconds>` to tune each kubectl collector timeout for slow or degraded API servers.
 
 ## ✨ Visual Preview
 

@@ -55,6 +55,30 @@ class TestBaseCommand:
         cmd = DiagCommand(config=config)
         assert cmd.config.colors_enabled is False
 
+    @pytest.mark.asyncio
+    @patch("kubectl_smart.cli.commands.collector_registry")
+    @patch("kubectl_smart.cli.commands.parser_registry")
+    async def test_collect_data_passes_configured_timeout(
+        self, mock_parser_registry, mock_collector_registry
+    ):
+        """Test command collectors use AnalysisConfig.collector_timeout."""
+        mock_collector = MagicMock()
+        mock_collector.name = "kubectl_get"
+        mock_collector.collect = AsyncMock(
+            return_value=RawBlob(data={}, source="kubectl_get")
+        )
+        mock_collector_registry.create.return_value = mock_collector
+        mock_parser_registry.parse.return_value = []
+
+        cmd = DiagCommand(config=AnalysisConfig(collector_timeout=2.5))
+        subject = SubjectCtx(kind=ResourceKind.POD, name="api", namespace="default")
+
+        await cmd._collect_data(subject, ["get", "events"])
+
+        first_call, second_call = mock_collector_registry.create.call_args_list
+        assert first_call.kwargs["timeout_seconds"] == 2.5
+        assert second_call.kwargs["timeout_seconds"] == 2.5
+
 
 class TestDiagCommand:
     """Tests for DiagCommand class"""

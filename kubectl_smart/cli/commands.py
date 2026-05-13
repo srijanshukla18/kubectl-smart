@@ -89,6 +89,11 @@ class BaseCommand:
 
     def _record_exception_gap(self, collector_name: str, error: Exception) -> None:
         self._add_data_gap(f"{collector_name} failed: {str(error).splitlines()[0]}")
+
+    def _create_collector(self, name: str, **kwargs):
+        """Create a collector using the configured per-kubectl timeout."""
+        kwargs.setdefault("timeout_seconds", self.config.collector_timeout)
+        return collector_registry.create(name, **kwargs)
     
     async def _collect_data(self, subject: SubjectCtx, collector_names: List[str]) -> List[ResourceRecord]:
         """Collect data using multiple collectors concurrently"""
@@ -99,11 +104,11 @@ class BaseCommand:
         for name in collector_names:
             try:
                 if name == 'describe':
-                    collector = collector_registry.create(name, resource_type=subject.kind.value.lower())
+                    collector = self._create_collector(name, resource_type=subject.kind.value.lower())
                 elif name == 'get':
-                    collector = collector_registry.create(name, resource_type=subject.kind.value.lower())
+                    collector = self._create_collector(name, resource_type=subject.kind.value.lower())
                 else:
-                    collector = collector_registry.create(name)
+                    collector = self._create_collector(name)
                 collectors.append(collector)
             except Exception as e:
                 logger.warning("Failed to create collector", name=name, error=str(e))
@@ -154,7 +159,7 @@ class DiagCommand(BaseCommand):
         all_resources = await self._collect_data(subject, collector_names)
 
         if subject.kind == ResourceKind.SERVICE:
-            endpoints_collector = collector_registry.create('get', resource_type='endpoints')
+            endpoints_collector = self._create_collector('get', resource_type='endpoints')
             endpoints_blob = await endpoints_collector.collect(subject)
             self._record_blob_gap(endpoints_blob)
             try:
@@ -163,7 +168,7 @@ class DiagCommand(BaseCommand):
                 logger.warning("Failed to parse service endpoint data", error=str(e))
                 self._add_data_gap(f"endpoints output could not be parsed: {str(e).splitlines()[0]}")
 
-            pods_collector = collector_registry.create('get', resource_type='pods')
+            pods_collector = self._create_collector('get', resource_type='pods')
             pods_blob = await pods_collector.collect(subject.model_copy(update={"name": ""}))
             self._record_blob_gap(pods_blob)
             try:
@@ -531,14 +536,14 @@ class GraphCommand(BaseCommand):
 
         for resource_type in namespace_resource_types:
             try:
-                collectors.append(collector_registry.create("get", resource_type=resource_type))
+                collectors.append(self._create_collector("get", resource_type=resource_type))
                 subjects.append(list_subject)
             except Exception as e:
                 logger.warning("Failed to create graph collector", resource_type=resource_type, error=str(e))
 
         for resource_type in cluster_resource_types:
             try:
-                collectors.append(collector_registry.create("get", resource_type=resource_type))
+                collectors.append(self._create_collector("get", resource_type=resource_type))
                 subjects.append(cluster_subject)
             except Exception as e:
                 logger.warning("Failed to create graph collector", resource_type=resource_type, error=str(e))
@@ -684,10 +689,10 @@ class TopCommand(BaseCommand):
             # Additional targeted gets for resources needed by forecasting
             # Secrets (for TLS), Ingress (TLS references), PVC/PV (storage mapping)
             extra_collectors = [
-                collector_registry.create('get', resource_type='secrets'),
-                collector_registry.create('get', resource_type='ingresses'),
-                collector_registry.create('get', resource_type='persistentvolumeclaims'),
-                collector_registry.create('get', resource_type='persistentvolumes'),
+                self._create_collector('get', resource_type='secrets'),
+                self._create_collector('get', resource_type='ingresses'),
+                self._create_collector('get', resource_type='persistentvolumeclaims'),
+                self._create_collector('get', resource_type='persistentvolumes'),
             ]
             import asyncio as _asyncio
             extra_blobs = await _asyncio.gather(*[c.collect(subject) for c in extra_collectors], return_exceptions=True)
