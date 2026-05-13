@@ -75,6 +75,7 @@ class TerminalRenderer:
                 for i, factor in enumerate(result.contributing_factors, 1):
                     console.print(f"  {i}. {factor.title} (score: {factor.score:.1f})")
                     console.print(f"     {factor.description}")
+                    self._render_issue_evidence(console, factor, indent="     ")
 
             # Recent Events - New Section
             if result.recent_events:
@@ -253,20 +254,29 @@ class TerminalRenderer:
         if issue.critical_path:
             console.print("    [red]🎯 On critical dependency path[/red]")
 
-        if show_details and issue.evidence:
-            console.print("    [dim]Evidence:[/dim]")
-            for evidence in issue.evidence[:5]:
-                console.print(f"    [dim]• {evidence}[/dim]")
-        elif show_details and issue.severity in {
-            IssueSeverity.CRITICAL,
-            IssueSeverity.WARNING,
-        }:
-            console.print("    [dim]Evidence: no supporting evidence attached[/dim]")
+        if show_details:
+            self._render_issue_evidence(console, issue)
         
         if show_details and issue.suggested_actions:
             console.print("    [dim]Suggested actions:[/dim]")
             for action in issue.suggested_actions[:3]:  # Limit to top 3
                 console.print(f"    [dim]• {action}[/dim]")
+
+    def _render_issue_evidence(
+        self,
+        console: Console,
+        issue: Issue,
+        indent: str = "    ",
+    ) -> None:
+        if issue.evidence:
+            console.print(f"{indent}[dim]Evidence:[/dim]")
+            for evidence in issue.evidence[:5]:
+                console.print(f"{indent}[dim]• {evidence}[/dim]")
+        elif issue.severity in {
+            IssueSeverity.CRITICAL,
+            IssueSeverity.WARNING,
+        }:
+            console.print(f"{indent}[dim]Evidence: no supporting evidence attached[/dim]")
     
     def _get_severity_style(self, severity: IssueSeverity) -> str:
         """Get rich style for issue severity"""

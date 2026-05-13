@@ -168,6 +168,35 @@ class TestRenderDiagnosis:
         assert "CONTRIBUTING FACTORS" in output
         assert "Contributing Factor" in output
 
+    def test_render_diagnosis_with_contributing_factor_evidence(
+        self, sample_subject_ctx, sample_resource_record
+    ):
+        """Test contributing factors include supporting evidence."""
+        renderer = TerminalRenderer(colors_enabled=False)
+        factor = Issue(
+            resource_uid="test",
+            title="Scheduling Failed",
+            description="Pod could not be scheduled",
+            severity=IssueSeverity.WARNING,
+            score=65.0,
+            reason="FailedScheduling",
+            message="0/3 nodes are available",
+            evidence=[
+                "Event Warning/FailedScheduling: 0/3 nodes are available: insufficient cpu"
+            ],
+        )
+        result = DiagnosisResult(
+            subject=sample_subject_ctx,
+            resource=sample_resource_record,
+            contributing_factors=[factor],
+            analysis_duration=1.0,
+        )
+        output = renderer.render_diagnosis(result)
+
+        assert "CONTRIBUTING FACTORS" in output
+        assert "Evidence" in output
+        assert "insufficient cpu" in output
+
     def test_render_diagnosis_with_suggested_actions(
         self, sample_subject_ctx, sample_resource_record
     ):
