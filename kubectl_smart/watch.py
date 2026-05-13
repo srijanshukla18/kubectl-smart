@@ -38,6 +38,8 @@ class WatchState:
     root_cause_score: float = 0.0
     issue_count: int = 0
     issue_titles: List[str] = field(default_factory=list)
+    data_gap_count: int = 0
+    data_gaps: List[str] = field(default_factory=list)
 
 
 class ResourceWatcher:
@@ -142,15 +144,20 @@ class ResourceWatcher:
                 root_cause_score=0.0,
                 issue_count=0,
                 issue_titles=[],
+                data_gap_count=0,
+                data_gaps=[],
             )
 
         # It's a DiagnosisResult
+        diagnostic_issues = result.diagnostic_issues
         return WatchState(
             status=result.resource.status if result.resource else None,
             root_cause_title=result.root_cause.title if result.root_cause else None,
             root_cause_score=result.root_cause.score if result.root_cause else 0.0,
-            issue_count=len(result.issues),
-            issue_titles=[i.title for i in result.issues],
+            issue_count=len(diagnostic_issues),
+            issue_titles=[i.title for i in diagnostic_issues],
+            data_gap_count=len(result.data_gaps),
+            data_gaps=list(result.data_gaps),
         )
 
     def _status_from_exit_code(self, exit_code: int) -> str:
@@ -248,6 +255,42 @@ class ResourceWatcher:
             changes.append(event)
             self.events.append(event)
 
+        # Analysis completeness changes
+        if prev.data_gap_count != curr.data_gap_count:
+            event = WatchEvent(
+                timestamp=now,
+                event_type="data_gap_change",
+                resource=self.subject.full_name,
+                details={
+                    "previous_count": prev.data_gap_count,
+                    "current_count": curr.data_gap_count,
+                },
+            )
+            changes.append(event)
+            self.events.append(event)
+
+        new_gaps = set(curr.data_gaps) - set(prev.data_gaps)
+        for gap in new_gaps:
+            event = WatchEvent(
+                timestamp=now,
+                event_type="data_gap_detected",
+                resource=self.subject.full_name,
+                details={"gap": gap},
+            )
+            changes.append(event)
+            self.events.append(event)
+
+        resolved_gaps = set(prev.data_gaps) - set(curr.data_gaps)
+        for gap in resolved_gaps:
+            event = WatchEvent(
+                timestamp=now,
+                event_type="data_gap_resolved",
+                resource=self.subject.full_name,
+                details={"gap": gap},
+            )
+            changes.append(event)
+            self.events.append(event)
+
         return changes
 
     def _print_initial_state(self, result, renderer, output_format: str) -> None:
@@ -288,6 +331,15 @@ class ResourceWatcher:
             elif change.event_type == "root_cause_change":
                 print(f"\n{icon} [{timestamp}] Root cause changed: {change.details['previous']} → {change.details['current']}", flush=True)
 
+            elif change.event_type == "data_gap_change":
+                print(f"\n{icon} [{timestamp}] Data gaps: {change.details['previous_count']} → {change.details['current_count']}", flush=True)
+
+            elif change.event_type == "data_gap_detected":
+                print(f"\n{icon} [{timestamp}] Data gap detected: {change.details['gap']}", flush=True)
+
+            elif change.event_type == "data_gap_resolved":
+                print(f"\n{icon} [{timestamp}] Data gap resolved: {change.details['gap']}", flush=True)
+
             # Trigger callback if registered
             if self.on_change:
                 self.on_change(change)
@@ -317,6 +369,9 @@ class ResourceWatcher:
             "issue_resolved": "✅",
             "score_change": "📈",
             "root_cause_change": "⚠️",
+            "data_gap_change": "⚪",
+            "data_gap_detected": "⚪",
+            "data_gap_resolved": "✅",
         }
         return icons.get(event_type, "📌")
 
@@ -328,5 +383,8 @@ class ResourceWatcher:
             "issue_resolved": "green",
             "score_change": "cyan",
             "root_cause_change": "yellow",
+            "data_gap_change": "white",
+            "data_gap_detected": "yellow",
+            "data_gap_resolved": "green",
         }
         return colors.get(event_type, "white")

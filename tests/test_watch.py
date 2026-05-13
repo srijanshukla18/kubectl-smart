@@ -38,6 +38,71 @@ def test_watch_status_from_unknown_exit_code():
     assert state.status == "exit_7"
 
 
+def test_watch_state_preserves_data_gaps():
+    """Watch state should track analysis completeness, not just issues."""
+    subject = SubjectCtx(kind=ResourceKind.POD, name="api", namespace="default")
+    resource = ResourceRecord(
+        kind=ResourceKind.POD,
+        name="api",
+        uid="api-uid",
+        namespace="default",
+        status="Running",
+    )
+    result = DiagnosisResult(
+        subject=subject,
+        resource=resource,
+        data_gaps=["events events unavailable (rbac): forbidden"],
+        analysis_duration=0.1,
+    )
+
+    state = ResourceWatcher(subject)._extract_state(result)
+
+    assert state.data_gap_count == 1
+    assert state.data_gaps == ["events events unavailable (rbac): forbidden"]
+
+
+def test_watch_detects_data_gap_changes(capsys):
+    """Watch mode should announce when evidence sources appear or disappear."""
+    subject = SubjectCtx(kind=ResourceKind.POD, name="api", namespace="default")
+    watcher = ResourceWatcher(subject)
+    previous = watcher._extract_state(
+        DiagnosisResult(
+            subject=subject,
+            resource=ResourceRecord(
+                kind=ResourceKind.POD,
+                name="api",
+                uid="api-uid",
+                namespace="default",
+                status="Running",
+            ),
+            analysis_duration=0.1,
+        )
+    )
+    current = watcher._extract_state(
+        DiagnosisResult(
+            subject=subject,
+            resource=ResourceRecord(
+                kind=ResourceKind.POD,
+                name="api",
+                uid="api-uid",
+                namespace="default",
+                status="Running",
+            ),
+            data_gaps=["logs pods unavailable (rbac): forbidden"],
+            analysis_duration=0.1,
+        )
+    )
+
+    changes = watcher._detect_changes(previous, current, object())
+    watcher._print_changes(changes)
+    output = capsys.readouterr().out
+
+    assert any(change.event_type == "data_gap_change" for change in changes)
+    assert any(change.event_type == "data_gap_detected" for change in changes)
+    assert "Data gaps: 0" in output
+    assert "Data gap detected: logs pods unavailable" in output
+
+
 @pytest.mark.asyncio
 async def test_check_resource_uses_raw_diagnosis_for_change_detection(
     monkeypatch,
