@@ -465,6 +465,7 @@ class TestDiagCommand:
 
         assert result.exit_code == 0
         assert analyzer.diagnose_all.await_args.kwargs["label_selector"] == "app=checkout,tier=api"
+        assert "Selector: app=checkout,tier=api" in result.stdout
 
     def test_diag_selector_requires_all(self):
         """Test --selector is rejected for single-resource diagnosis."""

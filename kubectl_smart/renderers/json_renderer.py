@@ -160,6 +160,7 @@ class JsonRenderer:
                 "data_gaps": data_gap_count,
                 "analysis_complete": not failed and data_gap_count == 0,
                 "max_concurrent": batch_info.get("max_concurrent"),
+                "label_selector": batch_info.get("label_selector"),
                 "exit_code": exit_code,
             },
             "results": [

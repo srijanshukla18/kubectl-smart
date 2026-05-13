@@ -129,6 +129,7 @@ log "Checking label-selected batch diagnosis narrows namespace scope..."
 selector_batch="$(capture selector_batch "${KUBECTL_SMART_CMD[@]}" diag pod --all -n "$NAMESPACE" -l demo.kubectl-smart/story=checkout-cascade --context "$KUBECTL_SMART_CONTEXT")"
 assert_status selector_batch 2
 assert_contains "$selector_batch" "Total: 2 | Analyzed: 2 | Failed: 0" "label-selected batch summary"
+assert_contains "$selector_batch" "Selector: demo.kubectl-smart/story=checkout-cascade" "label-selected batch selector"
 assert_contains "$selector_batch" "checkout-api-0:" "label-selected checkout pod"
 assert_contains "$selector_batch" "inventory-db-canary" "label-selected inventory pod"
 

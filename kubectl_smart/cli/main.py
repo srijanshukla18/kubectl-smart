@@ -321,6 +321,7 @@ def diag(
                         "errors": batch_result.errors,
                         "messages": batch_result.messages,
                         "max_concurrent": max_concurrent,
+                        "label_selector": label_selector,
                         "exit_code": batch_exit_code,
                     }
                 ))
@@ -329,6 +330,8 @@ def diag(
                 typer.echo(f"\n📋 BATCH DIAGNOSIS: {kubectl_resource_type(kind)}")
                 if namespace:
                     typer.echo(f"Namespace: {namespace}")
+                if label_selector:
+                    typer.echo(f"Selector: {label_selector}")
                 total_data_gaps = sum(len(r.data_gaps) for r in batch_result.results)
                 typer.echo(f"Total: {batch_result.total_resources} | "
                           f"Analyzed: {batch_result.successful} | "
