@@ -111,12 +111,29 @@ assert_contains "$checkout_sts_diag" "Pod checkout-api-0: Log Errors" "checkout 
 assert_contains "$checkout_sts_diag" "OwnerReference: Pod/${NAMESPACE}/checkout-api-0 is owned by" "checkout child ownership evidence"
 assert_contains "$checkout_sts_diag" "StatefulSet/${NAMESPACE}/checkout-api" "checkout child owner evidence"
 
+log "Checking checkout graph shows upstream and downstream blast-radius context..."
+checkout_graph="$(capture checkout_graph "${KUBECTL_SMART_CMD[@]}" graph pod checkout-api-0 -n "$NAMESPACE" --context "$KUBECTL_SMART_CONTEXT" --upstream --downstream --timeout 2)"
+assert_status checkout_graph 0
+assert_contains "$checkout_graph" "UPSTREAM DEPENDENCIES" "checkout graph upstream section"
+assert_contains "$checkout_graph" "DOWNSTREAM DEPENDENCIES" "checkout graph downstream section"
+assert_contains "$checkout_graph" "ConfigMap/${NAMESPACE}/checkout-config" "checkout graph config dependency"
+assert_contains "$checkout_graph" "Service/${NAMESPACE}/checkout-api" "checkout graph service dependency"
+assert_contains "$checkout_graph" "Ingress/${NAMESPACE}/checkout-demo" "checkout graph ingress dependency"
+
 log "Checking service diagnosis cites endpoint and selector evidence..."
 service_diag="$(capture service_diag "${KUBECTL_SMART_CMD[@]}" diag svc inventory-db -n "$NAMESPACE" --context "$KUBECTL_SMART_CONTEXT")"
 assert_status service_diag 2
 assert_contains "$service_diag" "Service has no ready endpoints" "service endpoint root cause"
 assert_contains "$service_diag" "Endpoints/${NAMESPACE}/inventory-db: ready addresses=0" "endpoint count evidence"
 assert_contains "$service_diag" "No Pods in namespace match selector" "selector evidence"
+
+log "Checking predictive outlook shows TLS warning and explicit metrics data gap..."
+top_outlook="$(capture top_outlook "${KUBECTL_SMART_CMD[@]}" top "$NAMESPACE" --context "$KUBECTL_SMART_CONTEXT" --horizon 72 --timeout 2)"
+assert_status top_outlook 0
+assert_contains "$top_outlook" "PREDICTIVE OUTLOOK: namespace ${NAMESPACE}" "top namespace header"
+assert_contains "$top_outlook" "CERTIFICATE WARNINGS" "top certificate warning"
+assert_contains "$top_outlook" "DATA GAPS (1)" "top data-gap count"
+assert_contains "$top_outlook" "metrics pods unavailable" "top metrics data gap"
 
 log "Checking admin batch diagnosis reports namespace-scale data gaps..."
 batch_diag="$(capture batch_diag "${KUBECTL_SMART_CMD[@]}" diag pod --all -n "$NAMESPACE" --max-concurrent 1 --context "$KUBECTL_SMART_CONTEXT")"
@@ -166,6 +183,13 @@ restricted_fulfillment="$(capture restricted_fulfillment env KUBECONFIG="$RBAC_K
 assert_status restricted_fulfillment 2
 assert_contains "$restricted_fulfillment" "Verify missing Secret: kubectl get secret missing-fulfillment-runtime-token" "restricted missing Secret action"
 assert_contains "$restricted_fulfillment" "DATA GAPS (2)" "restricted fulfillment gap count"
+
+log "Checking fulfillment graph preserves the missing env Secret dependency..."
+fulfillment_graph="$(capture fulfillment_graph "${KUBECTL_SMART_CMD[@]}" graph pod fulfillment-worker-0 -n "$NAMESPACE" --context "$KUBECTL_SMART_CONTEXT" --upstream --downstream --timeout 2)"
+assert_status fulfillment_graph 0
+assert_contains "$fulfillment_graph" "Secret/${NAMESPACE}/missing-fulfillment-runtime-token" "fulfillment graph missing env secret"
+assert_contains "$fulfillment_graph" "ConfigMap/${NAMESPACE}/fulfillment-routing" "fulfillment graph config dependency"
+assert_contains "$fulfillment_graph" "Service/${NAMESPACE}/fulfillment-worker" "fulfillment graph service dependency"
 
 log "Checking restricted batch JSON preserves per-resource data gaps..."
 restricted_batch_json="$(capture restricted_batch_json env KUBECONFIG="$RBAC_KUBECONFIG" "${KUBECTL_SMART_CMD[@]}" diag pod --all -n "$NAMESPACE" -o json --context "$RBAC_CONTEXT")"
