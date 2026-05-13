@@ -648,6 +648,44 @@ class TestGraphCommand:
         assert "UPSTREAM DEPENDENCIES" in result.output
         assert "DOWNSTREAM DEPENDENCIES" in result.output
 
+    @pytest.mark.asyncio
+    @patch("kubectl_smart.cli.commands.collector_registry")
+    @patch("kubectl_smart.cli.commands.parser_registry")
+    async def test_execute_surfaces_collector_creation_data_gaps(
+        self, mock_parser_registry, mock_collector_registry
+    ):
+        """Test graph reports resource-type collector setup failures as data gaps."""
+        pod = ResourceRecord(
+            kind=ResourceKind.POD,
+            name="test-pod",
+            uid="pod-uid-123",
+            namespace="default",
+            status="Running",
+        )
+
+        def create_collector(name, **kwargs):
+            if kwargs.get("resource_type") == "secrets":
+                raise RuntimeError("registry unavailable")
+            collector = MagicMock()
+            collector.name = f"{name}_{kwargs.get('resource_type', 'generic')}"
+            collector.collect = AsyncMock(
+                return_value=MagicMock(data={}, source="test")
+            )
+            return collector
+
+        mock_collector_registry.create.side_effect = create_collector
+        mock_parser_registry.parse.return_value = [pod]
+
+        cmd = GraphCommand()
+        subject = SubjectCtx(
+            kind=ResourceKind.POD, name="test-pod", namespace="default"
+        )
+        result = await cmd.execute(subject)
+
+        assert result.exit_code == 0
+        assert "DATA GAPS" in result.output
+        assert "get secrets collector unavailable: registry unavailable" in result.output
+
 
 class TestTopCommand:
     """Tests for TopCommand class"""
@@ -712,6 +750,38 @@ class TestTopCommand:
         # Exit code should still be 0 for top (advisory)
         assert result.exit_code == 0
 
+    @pytest.mark.asyncio
+    @patch("kubectl_smart.cli.commands.collector_registry")
+    @patch("kubectl_smart.cli.commands.parser_registry")
+    async def test_execute_surfaces_optional_collector_creation_data_gaps(
+        self, mock_parser_registry, mock_collector_registry
+    ):
+        """Test top degrades when optional forecasting collectors cannot start."""
+
+        def create_collector(name, **kwargs):
+            if kwargs.get("resource_type") == "secrets":
+                raise RuntimeError("registry unavailable")
+            collector = MagicMock()
+            collector.name = f"{name}_{kwargs.get('resource_type', 'generic')}"
+            collector.collect = AsyncMock(
+                return_value=MagicMock(data={}, source="test")
+            )
+            return collector
+
+        mock_collector_registry.create.side_effect = create_collector
+        mock_parser_registry.parse.return_value = []
+
+        cmd = TopCommand()
+        subject = SubjectCtx(
+            kind=ResourceKind.NAMESPACE, name="default", namespace="default"
+        )
+        result = await cmd.execute(subject)
+
+        assert result.exit_code == 0
+        assert "PREDICTIVE OUTLOOK" in result.output
+        assert "DATA GAPS" in result.output
+        assert "get secrets collector unavailable: registry unavailable" in result.output
+
 
 class TestCollectData:
     """Tests for _collect_data method"""
@@ -760,3 +830,22 @@ class TestCollectData:
 
         # Should return empty list on failure
         assert resources == []
+
+    @pytest.mark.asyncio
+    @patch("kubectl_smart.cli.commands.collector_registry")
+    async def test_collect_data_records_collector_creation_failure(
+        self, mock_collector_registry
+    ):
+        """Test collector setup failures become explicit data gaps."""
+        mock_collector_registry.create.side_effect = RuntimeError("registry unavailable")
+
+        cmd = DiagCommand()
+        subject = SubjectCtx(
+            kind=ResourceKind.POD, name="test-pod", namespace="default"
+        )
+        resources = await cmd._collect_data(subject, ["get"])
+
+        assert resources == []
+        assert cmd.data_gaps == [
+            "get pod collector unavailable: registry unavailable"
+        ]

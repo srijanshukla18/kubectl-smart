@@ -89,6 +89,19 @@ class BaseCommand:
     def _record_exception_gap(self, collector_name: str, error: Exception) -> None:
         self._add_data_gap(f"{collector_name} failed: {str(error).splitlines()[0]}")
 
+    def _record_collector_creation_gap(
+        self,
+        collector_name: str,
+        error: Exception,
+        resource_type: Optional[str] = None,
+    ) -> None:
+        label = collector_name
+        if resource_type:
+            label += f" {resource_type}"
+        self._add_data_gap(
+            f"{label} collector unavailable: {str(error).splitlines()[0]}"
+        )
+
     def _create_collector(self, name: str, **kwargs):
         """Create a collector using the configured per-kubectl timeout."""
         kwargs.setdefault("timeout_seconds", self.config.collector_timeout)
@@ -103,14 +116,18 @@ class BaseCommand:
         for name in collector_names:
             try:
                 if name == 'describe':
-                    collector = self._create_collector(name, resource_type=subject.kind.value.lower())
+                    resource_type = subject.kind.value.lower()
+                    collector = self._create_collector(name, resource_type=resource_type)
                 elif name == 'get':
-                    collector = self._create_collector(name, resource_type=subject.kind.value.lower())
+                    resource_type = subject.kind.value.lower()
+                    collector = self._create_collector(name, resource_type=resource_type)
                 else:
+                    resource_type = None
                     collector = self._create_collector(name)
                 collectors.append(collector)
             except Exception as e:
                 logger.warning("Failed to create collector", name=name, error=str(e))
+                self._record_collector_creation_gap(name, e, resource_type)
         
         # Collect data concurrently
         tasks = [collector.collect(subject) for collector in collectors]
@@ -541,6 +558,7 @@ class GraphCommand(BaseCommand):
                 subjects.append(list_subject)
             except Exception as e:
                 logger.warning("Failed to create graph collector", resource_type=resource_type, error=str(e))
+                self._record_collector_creation_gap("get", e, resource_type)
 
         for resource_type in cluster_resource_types:
             try:
@@ -548,6 +566,7 @@ class GraphCommand(BaseCommand):
                 subjects.append(cluster_subject)
             except Exception as e:
                 logger.warning("Failed to create graph collector", resource_type=resource_type, error=str(e))
+                self._record_collector_creation_gap("get", e, resource_type)
 
         blobs = await asyncio.gather(
             *[collector.collect(collector_subject) for collector, collector_subject in zip(collectors, subjects)],
@@ -689,12 +708,24 @@ class TopCommand(BaseCommand):
 
             # Additional targeted gets for resources needed by forecasting
             # Secrets (for TLS), Ingress (TLS references), PVC/PV (storage mapping)
-            extra_collectors = [
-                self._create_collector('get', resource_type='secrets'),
-                self._create_collector('get', resource_type='ingresses'),
-                self._create_collector('get', resource_type='persistentvolumeclaims'),
-                self._create_collector('get', resource_type='persistentvolumes'),
-            ]
+            extra_collectors = []
+            for resource_type in [
+                'secrets',
+                'ingresses',
+                'persistentvolumeclaims',
+                'persistentvolumes',
+            ]:
+                try:
+                    extra_collectors.append(
+                        self._create_collector('get', resource_type=resource_type)
+                    )
+                except Exception as e:
+                    logger.info(
+                        "Optional collector unavailable",
+                        resource_type=resource_type,
+                        error=str(e),
+                    )
+                    self._record_collector_creation_gap('get', e, resource_type)
             import asyncio as _asyncio
             extra_blobs = await _asyncio.gather(*[c.collect(subject) for c in extra_collectors], return_exceptions=True)
             for i, blob in enumerate(extra_blobs):
