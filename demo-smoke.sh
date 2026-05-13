@@ -118,7 +118,7 @@ assert_contains "$restricted_logs" "cannot get resource \"pods/log\"" "restricte
 
 log "Checking restricted diagnosis surfaces exact RBAC data gaps..."
 restricted_diag="$(capture restricted_diag env KUBECONFIG="$RBAC_KUBECONFIG" kubectl-smart diag pod checkout-api-0 -n "$NAMESPACE")"
-assert_status restricted_diag 2
+assert_status restricted_diag 1
 assert_contains "$restricted_diag" "DATA GAPS (2)" "restricted diag gap count"
 assert_contains "$restricted_diag" "events events unavailable (rbac)" "restricted event gap"
 assert_contains "$restricted_diag" "logs pods unavailable (rbac)" "restricted log gap"

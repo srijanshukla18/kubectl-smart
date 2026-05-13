@@ -345,15 +345,10 @@ class DiagCommand(BaseCommand):
             renderer = TerminalRenderer(colors_enabled=self.config.colors_enabled)
             output = renderer.render_diagnosis(result)
             
-            # Determine exit code (keep existing semantics: 0 unless issues reach thresholds)
-            exit_code = 0
-            if result.critical_issues or result.warning_issues:
-                exit_code = 2
-            
             logger.debug(f"DiagCommand: critical_issues={result.critical_issues}, warning_issues={result.warning_issues}")
             return CommandResult(
                 output=output, 
-                exit_code=exit_code, 
+                exit_code=result.exit_code,
                 analysis_duration=analysis_duration
             )
             

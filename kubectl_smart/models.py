@@ -213,6 +213,15 @@ class DiagnosisResult(BaseModel):
     def warning_issues(self) -> List[Issue]:
         """Get all warning issues"""
         return [issue for issue in self.issues if issue.severity == IssueSeverity.WARNING]
+
+    @property
+    def exit_code(self) -> int:
+        """Return CLI exit code for this diagnosis."""
+        if self.critical_issues:
+            return 2
+        if self.warning_issues:
+            return 1
+        return 0
     
     
 

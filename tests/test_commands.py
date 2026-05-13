@@ -217,6 +217,35 @@ class TestDiagCommand:
         # Should have non-zero exit code for issues
         assert result.exit_code == 2
 
+    @pytest.mark.asyncio
+    @patch("kubectl_smart.cli.commands.collector_registry")
+    @patch("kubectl_smart.cli.commands.parser_registry")
+    async def test_execute_warning_only_returns_exit_one(
+        self, mock_parser_registry, mock_collector_registry
+    ):
+        """Test DiagCommand returns exit 1 for warning-only diagnoses."""
+        pod = ResourceRecord(
+            kind=ResourceKind.POD,
+            name="unknown-pod",
+            uid="pod-uid-123",
+            namespace="default",
+            status="Unknown",
+        )
+
+        mock_collector = MagicMock()
+        mock_collector.collect = AsyncMock(return_value=MagicMock(data={}, source="test"))
+        mock_collector_registry.create.return_value = mock_collector
+        mock_parser_registry.parse.return_value = [pod]
+
+        cmd = DiagCommand()
+        subject = SubjectCtx(
+            kind=ResourceKind.POD, name="unknown-pod", namespace="default"
+        )
+        result = await cmd.execute(subject)
+
+        assert result.exit_code == 1
+        assert "Resource Status: Unknown" in result.output
+
     def test_generate_suggested_actions_failed_status(self):
         """Test suggested actions for failed resource"""
         cmd = DiagCommand()

@@ -249,6 +249,51 @@ class TestDiagCommand:
         assert '"exit_code": 2' in result.stdout
         assert "Failed to list pods: forbidden" in result.stdout
 
+    @patch("kubectl_smart.cli.commands.DiagCommand.execute_raw")
+    def test_diag_json_warning_only_exits_one(self, mock_execute_raw):
+        """Test JSON diag honors documented warning-only exit code."""
+        from kubectl_smart.models import (
+            DiagnosisResult,
+            Issue,
+            IssueSeverity,
+            ResourceKind,
+            ResourceRecord,
+            SubjectCtx,
+        )
+
+        subject = SubjectCtx(kind=ResourceKind.POD, name="api", namespace="default")
+        resource = ResourceRecord(
+            kind=ResourceKind.POD,
+            name="api",
+            uid="api-uid",
+            namespace="default",
+            status="Unknown",
+        )
+        issue = Issue(
+            resource_uid="api-uid",
+            title="Resource Status: Unknown",
+            description="Pod api is in Unknown state",
+            severity=IssueSeverity.WARNING,
+            score=70,
+            reason="StatusUnknown",
+            message="Resource is in unhealthy state: Unknown",
+        )
+        mock_execute_raw.return_value = DiagnosisResult(
+            subject=subject,
+            resource=resource,
+            issues=[issue],
+            analysis_duration=0.1,
+        )
+
+        result = runner.invoke(
+            app,
+            ["diag", "pod", "api", "-n", "default", "-o", "json"],
+        )
+
+        assert result.exit_code == 1
+        assert '"warning": 1' in result.stdout
+        assert '"exit_code": 1' in result.stdout
+
 
 class TestGraphCommand:
     """Tests for graph command"""

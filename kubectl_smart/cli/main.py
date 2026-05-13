@@ -238,11 +238,7 @@ def diag(
                 namespace=namespace,
                 context=context,
             ))
-            has_issues = any(
-                r.critical_issues or r.warning_issues
-                for r in batch_result.results
-            )
-            batch_exit_code = 2 if batch_result.failed or has_issues else 0
+            batch_exit_code = batch_result.exit_code
 
             if output == "json":
                 renderer = JsonRenderer(pretty=True)
@@ -354,9 +350,7 @@ def diag(
             renderer = JsonRenderer(pretty=True)
             typer.echo(renderer.render_diagnosis(diagnosis_result))
 
-            # Determine exit code
-            exit_code = 2 if diagnosis_result.critical_issues or diagnosis_result.warning_issues else 0
-            raise typer.Exit(exit_code)
+            raise typer.Exit(diagnosis_result.exit_code)
         else:
             result = asyncio.run(command.execute(subject))
             typer.echo(result.output)

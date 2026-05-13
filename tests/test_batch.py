@@ -5,9 +5,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from kubectl_smart.batch import BatchAnalyzer
+from kubectl_smart.batch import BatchAnalyzer, BatchResult
 from kubectl_smart.models import (
     DiagnosisResult,
+    Issue,
+    IssueSeverity,
     ResourceKind,
     ResourceRecord,
     SubjectCtx,
@@ -164,3 +166,39 @@ async def test_diagnose_all_reports_resource_list_failure(monkeypatch):
     assert result.total_resources == 0
     assert result.failed == 1
     assert result.errors == [{"message": "Failed to list pods: forbidden"}]
+
+
+def test_batch_result_exit_code_uses_highest_severity():
+    """Batch exit code should distinguish warnings from critical failures."""
+    subject = SubjectCtx(kind=ResourceKind.POD, name="api", namespace="default")
+    warning_issue = Issue(
+        resource_uid="api-uid",
+        title="Resource Status: Unknown",
+        description="Pod api is in Unknown state",
+        severity=IssueSeverity.WARNING,
+        score=70,
+        reason="StatusUnknown",
+        message="Resource is in unhealthy state: Unknown",
+    )
+    critical_issue = warning_issue.model_copy(
+        update={
+            "severity": IssueSeverity.CRITICAL,
+            "score": 95,
+            "reason": "StatusFailed",
+        }
+    )
+
+    warning_result = DiagnosisResult(
+        subject=subject,
+        issues=[warning_issue],
+        analysis_duration=0.1,
+    )
+    critical_result = DiagnosisResult(
+        subject=subject,
+        issues=[critical_issue],
+        analysis_duration=0.1,
+    )
+
+    assert BatchResult(1, 1, 0, results=[warning_result]).exit_code == 1
+    assert BatchResult(1, 1, 0, results=[critical_result]).exit_code == 2
+    assert BatchResult(0, 0, 1, errors=[{"message": "forbidden"}]).exit_code == 2

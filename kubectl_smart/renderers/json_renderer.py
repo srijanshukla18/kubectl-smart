@@ -70,7 +70,7 @@ class JsonRenderer:
             "data_gaps": result.data_gaps,
             "analysis_duration_seconds": result.analysis_duration,
             "timestamp": result.timestamp.isoformat(),
-            "exit_code": 2 if result.critical_issues or result.warning_issues else 0,
+            "exit_code": result.exit_code,
         }
 
         return json.dumps(output, indent=self.indent, default=str)
@@ -155,7 +155,7 @@ class JsonRenderer:
                     "suggested_actions": r.suggested_actions,
                     "data_gaps": r.data_gaps,
                     "data_gap_count": len(r.data_gaps),
-                    "exit_code": 2 if r.critical_issues or r.warning_issues else 0,
+                    "exit_code": r.exit_code,
                 }
                 for r in results
             ],

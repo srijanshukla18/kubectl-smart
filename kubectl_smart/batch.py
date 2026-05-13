@@ -32,6 +32,15 @@ class BatchResult:
     errors: list[dict[str, str]] = field(default_factory=list)
     duration: float = 0.0
 
+    @property
+    def exit_code(self) -> int:
+        """Return CLI exit code for aggregate batch diagnosis."""
+        if self.failed or any(result.critical_issues for result in self.results):
+            return 2
+        if any(result.warning_issues for result in self.results):
+            return 1
+        return 0
+
 
 class BatchAnalyzer:
     """Batch analyzer for processing multiple resources concurrently"""

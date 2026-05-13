@@ -468,6 +468,39 @@ class TestDiagnosisResult:
         assert len(result.warning_issues) == 1
         assert result.warning_issues[0].severity == IssueSeverity.WARNING
 
+    def test_diagnosis_result_exit_code_uses_highest_severity(
+        self, sample_subject_ctx, sample_resource_record
+    ):
+        """Test diagnosis exit code follows documented severity levels."""
+        warning_issue = Issue(
+            resource_uid="test",
+            title="Warning",
+            description="Warning issue",
+            severity=IssueSeverity.WARNING,
+            score=60.0,
+            reason="WarningError",
+            message="Warning message",
+        )
+        critical_issue = warning_issue.model_copy(
+            update={
+                "severity": IssueSeverity.CRITICAL,
+                "score": 95.0,
+                "reason": "CriticalError",
+            }
+        )
+
+        healthy = DiagnosisResult(
+            subject=sample_subject_ctx,
+            resource=sample_resource_record,
+            analysis_duration=1.0,
+        )
+        warning = healthy.model_copy(update={"issues": [warning_issue]})
+        critical = healthy.model_copy(update={"issues": [warning_issue, critical_issue]})
+
+        assert healthy.exit_code == 0
+        assert warning.exit_code == 1
+        assert critical.exit_code == 2
+
 
 class TestGraphResult:
     """Tests for GraphResult model"""
