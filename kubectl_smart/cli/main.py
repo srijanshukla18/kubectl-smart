@@ -118,14 +118,26 @@ def _resolve_context(context: Optional[str]) -> Optional[str]:
     return os.getenv("KUBECTL_SMART_CONTEXT") or None
 
 
-def _echo_command_error(message: str, output: str = "text") -> None:
+def _echo_command_error(
+    message: str,
+    output: str = "text",
+    data_gaps: Optional[list[str]] = None,
+) -> None:
     """Render command-level errors in the requested output format."""
     if output == "json":
         from ..renderers.json_renderer import JsonRenderer
 
-        typer.echo(JsonRenderer(pretty=True).render_error(message))
+        typer.echo(JsonRenderer(pretty=True).render_error(message, data_gaps=data_gaps))
     else:
-        typer.echo(f"Error: {message}", err=True)
+        if data_gaps:
+            from ..renderers.terminal import TerminalRenderer
+
+            typer.echo(
+                TerminalRenderer().render_error(message, data_gaps=data_gaps),
+                err=True,
+            )
+        else:
+            typer.echo(f"Error: {message}", err=True)
 
 
 
@@ -401,7 +413,7 @@ def diag(
         import os
         if os.getenv('KUBECTL_SMART_DEBUG'):
             typer.echo(f"Debug: Exception caught: {e}", err=True)
-        _echo_command_error(str(e), output)
+        _echo_command_error(str(e), output, data_gaps=command.data_gaps)
         raise typer.Exit(2)
 
 

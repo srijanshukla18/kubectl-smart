@@ -624,6 +624,17 @@ class TestJsonRenderer:
         assert '"type": "error"' in output
         assert '"exit_code": 2' in output
         assert "Something went wrong" in output
+        assert '"analysis_complete": false' in output
+
+    def test_render_error_includes_data_gaps(self):
+        """Test JSON errors preserve partial-analysis gaps."""
+        output = JsonRenderer().render_error(
+            "Something went wrong",
+            data_gaps=["events events unavailable (rbac): forbidden"],
+        )
+
+        assert '"data_gap_count": 1' in output
+        assert "events events unavailable" in output
 
     def test_render_diagnosis_includes_issue_evidence(
         self, sample_subject_ctx, sample_resource_record

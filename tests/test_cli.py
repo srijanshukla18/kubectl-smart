@@ -238,7 +238,28 @@ class TestDiagCommand:
         assert result.exit_code == 2
         assert '"type": "error"' in result.stdout
         assert '"exit_code": 2' in result.stdout
+        assert '"analysis_complete": false' in result.stdout
         assert "Resource Pod/default/missing not found" in result.stdout
+
+    def test_diag_json_error_preserves_command_data_gaps(self):
+        """Test JSON diag errors expose partial collector gaps."""
+        class FailingDiagCommand:
+            def __init__(self):
+                self.data_gaps = ["events events unavailable (rbac): forbidden"]
+
+            async def execute_raw(self, _subject):
+                raise ValueError("collector parse failed")
+
+        with patch("kubectl_smart.cli.commands.DiagCommand", FailingDiagCommand):
+            result = runner.invoke(
+                app,
+                ["diag", "pod", "api", "-n", "default", "-o", "json"],
+            )
+
+        assert result.exit_code == 2
+        assert '"type": "error"' in result.stdout
+        assert '"data_gap_count": 1' in result.stdout
+        assert "events events unavailable" in result.stdout
 
     @patch("kubectl_smart.cli.commands.DiagCommand.execute_raw")
     def test_diag_json_not_found_result_exits_two(self, mock_execute_raw):

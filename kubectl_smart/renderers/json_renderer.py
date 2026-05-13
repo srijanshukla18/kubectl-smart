@@ -196,13 +196,18 @@ class JsonRenderer:
         error_msg: str,
         details: Optional[str] = None,
         exit_code: int = 2,
+        data_gaps: Optional[List[str]] = None,
     ) -> str:
         """Render error as JSON"""
+        gaps = data_gaps or []
         output = {
             "type": "error",
             "error": error_msg,
             "details": details,
             "exit_code": exit_code,
+            "data_gaps": gaps,
+            "data_gap_count": len(gaps),
+            "analysis_complete": False,
             "timestamp": datetime.utcnow().isoformat(),
         }
 
