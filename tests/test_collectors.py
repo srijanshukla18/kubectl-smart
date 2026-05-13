@@ -478,6 +478,51 @@ class TestRunKubectl:
     @pytest.mark.asyncio
     @patch("asyncio.create_subprocess_exec")
     @patch("subprocess.run")
+    async def test_run_kubectl_allows_cloud_context_names(self, mock_run, mock_exec):
+        """Collector validation should allow real kube context names like EKS ARNs."""
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout="/usr/local/bin/kubectl\n", stderr=""
+        )
+        mock_process = AsyncMock()
+        mock_process.returncode = 0
+        mock_process.communicate.return_value = (b'{"kind": "List", "items": []}', b"")
+        mock_exec.return_value = mock_process
+        context = "arn:aws:eks:us-east-1:123456789012:cluster/prod"
+
+        collector = KubectlGet(resource_type="pods")
+        subject = SubjectCtx(
+            kind=ResourceKind.POD,
+            name="",
+            namespace="default",
+            context=context,
+        )
+
+        result = await collector._run_kubectl(["get", "pods"], subject)
+
+        assert result["kind"] == "List"
+        assert "--context" in mock_exec.call_args.args
+        assert context in mock_exec.call_args.args
+
+    @pytest.mark.asyncio
+    @patch("asyncio.create_subprocess_exec")
+    async def test_run_kubectl_rejects_control_char_context_before_spawn(self, mock_exec):
+        """Collector validation should still reject malformed context argv."""
+        collector = KubectlGet(resource_type="pods")
+        subject = SubjectCtx(
+            kind=ResourceKind.POD,
+            name="",
+            namespace="default",
+            context="bad\nctx",
+        )
+
+        with pytest.raises(CollectorError, match="Invalid context supplied"):
+            await collector._run_kubectl(["get", "pods"], subject)
+
+        mock_exec.assert_not_called()
+
+    @pytest.mark.asyncio
+    @patch("asyncio.create_subprocess_exec")
+    @patch("subprocess.run")
     async def test_run_kubectl_rbac_error(self, mock_run, mock_exec):
         """Test _run_kubectl raises RBACError on permission denied"""
         mock_run.return_value = MagicMock(

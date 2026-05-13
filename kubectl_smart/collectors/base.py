@@ -120,10 +120,9 @@ class Collector(ABC):
 
         # Defensive validation for namespace/context to avoid malformed argv
         dns_label = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
-        context_re = re.compile(r"^[A-Za-z0-9_.-]+$")
         if subject.namespace and (len(subject.namespace) > 63 or not dns_label.fullmatch(subject.namespace)):
             raise CollectorError("Invalid namespace supplied")
-        if subject.context and not context_re.fullmatch(subject.context):
+        if subject.context and any(ord(char) < 32 or ord(char) == 127 for char in subject.context):
             raise CollectorError("Invalid context supplied")
 
         cmd = [self.kubectl_path] + args + subject.kubectl_args()
