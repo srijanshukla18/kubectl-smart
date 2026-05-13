@@ -65,7 +65,8 @@ class TerminalRenderer:
             
             # Root Cause - highest-score issue
             if result.root_cause:
-                console.print("\n🔴 LIKELY ROOT CAUSE")
+                root_cause_icon = self._get_severity_icon(result.root_cause.severity)
+                console.print(f"\n{root_cause_icon} LIKELY ROOT CAUSE")
                 self._render_issue(console, result.root_cause, show_details=True)
             
             # Contributing Factors - next 2 issues (if ≥ 50)

@@ -68,6 +68,33 @@ class TestRenderDiagnosis:
         assert "LIKELY ROOT CAUSE" in output
         assert sample_issue.title in output
 
+    def test_render_diagnosis_root_cause_header_uses_issue_severity(
+        self, sample_subject_ctx, sample_resource_record
+    ):
+        """Test root cause section header does not overstate warning severity."""
+        renderer = TerminalRenderer(colors_enabled=False)
+        issue = Issue(
+            resource_uid=sample_resource_record.uid,
+            title="Resource Status: Unknown",
+            description="Pod test-pod is in Unknown state",
+            severity=IssueSeverity.WARNING,
+            score=70.0,
+            reason="StatusUnknown",
+            message="Resource is in unhealthy state: Unknown",
+        )
+        result = DiagnosisResult(
+            subject=sample_subject_ctx,
+            resource=sample_resource_record,
+            root_cause=issue,
+            issues=[issue],
+            analysis_duration=1.0,
+        )
+
+        output = renderer.render_diagnosis(result)
+
+        assert "🟡 LIKELY ROOT CAUSE" in output
+        assert "🔴 LIKELY ROOT CAUSE" not in output
+
     def test_render_diagnosis_with_root_cause_evidence(
         self, sample_subject_ctx, sample_resource_record
     ):
