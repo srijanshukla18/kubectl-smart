@@ -150,6 +150,7 @@ async def test_diagnose_all_reports_resource_list_timeout(monkeypatch):
     assert result.successful == 0
     assert result.failed == 1
     assert result.errors == [{"message": "Timed out after 0.1s listing pods"}]
+    assert result.messages == []
 
 
 @pytest.mark.asyncio
@@ -166,6 +167,25 @@ async def test_diagnose_all_reports_resource_list_failure(monkeypatch):
     assert result.total_resources == 0
     assert result.failed == 1
     assert result.errors == [{"message": "Failed to list pods: forbidden"}]
+    assert result.messages == []
+
+
+@pytest.mark.asyncio
+async def test_diagnose_all_reports_empty_resource_list_as_message(monkeypatch):
+    """Batch mode should not classify an empty selection as an error."""
+
+    async def fake_to_thread(func, cmd, **kwargs):
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr("kubectl_smart.batch.asyncio.to_thread", fake_to_thread)
+
+    result = await BatchAnalyzer().diagnose_all(ResourceKind.POD, namespace="default")
+
+    assert result.total_resources == 0
+    assert result.failed == 0
+    assert result.errors == []
+    assert result.messages == [{"message": "No Pods found"}]
+    assert result.exit_code == 0
 
 
 def test_batch_result_exit_code_uses_highest_severity():

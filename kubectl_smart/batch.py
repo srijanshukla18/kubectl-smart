@@ -30,6 +30,7 @@ class BatchResult:
     failed: int
     results: list[DiagnosisResult] = field(default_factory=list)
     errors: list[dict[str, str]] = field(default_factory=list)
+    messages: list[dict[str, str]] = field(default_factory=list)
     duration: float = 0.0
 
     @property
@@ -83,13 +84,14 @@ class BatchAnalyzer:
         resources = await self._get_resources(kind, namespace, context, label_selector)
 
         if not resources:
-            error = self._resource_list_error or f"No {kind.value}s found"
+            message = self._resource_list_error or f"No {kind.value}s found"
             return BatchResult(
                 total_resources=0,
                 successful=0,
                 failed=1 if self._resource_list_error else 0,
                 results=[],
-                errors=[{"message": error}],
+                errors=[{"message": message}] if self._resource_list_error else [],
+                messages=[] if self._resource_list_error else [{"message": message}],
                 duration=time.time() - start_time,
             )
 

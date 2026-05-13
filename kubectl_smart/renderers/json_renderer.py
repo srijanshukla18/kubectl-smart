@@ -185,6 +185,7 @@ class JsonRenderer:
                 for r in results
             ],
             "errors": batch_info.get("errors", []),
+            "messages": batch_info.get("messages", []),
             "timestamp": datetime.utcnow().isoformat(),
         }
 

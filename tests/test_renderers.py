@@ -701,6 +701,24 @@ class TestJsonRenderer:
         assert '"exit_code": 2' in output
         assert "Failed to list pods: forbidden" in output
 
+    def test_render_batch_preserves_non_error_messages(self):
+        """Test JSON batch output separates empty-selection notes from errors."""
+        output = JsonRenderer().render_batch(
+            [],
+            {
+                "total": 0,
+                "successful": 0,
+                "failed": 0,
+                "duration": 0.1,
+                "messages": [{"message": "No Pods found"}],
+            },
+        )
+
+        assert '"errors": []' in output
+        assert '"messages"' in output
+        assert "No Pods found" in output
+        assert '"exit_code": 0' in output
+
     def test_render_batch_infers_warning_exit_code(
         self, sample_subject_ctx, sample_resource_record
     ):

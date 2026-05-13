@@ -298,7 +298,7 @@ class TestDiagCommand:
                 total_resources=0,
                 successful=0,
                 failed=0,
-                errors=[{"message": "No Pods found"}],
+                messages=[{"message": "No Pods found"}],
                 duration=0.1,
             )
         )
@@ -311,6 +311,9 @@ class TestDiagCommand:
         assert result.exit_code == 0
         assert mock_batch_analyzer.call_args.kwargs["max_concurrent"] == 2
         assert "Concurrency: 2" in result.stdout
+        assert "Notes (1)" in result.stdout
+        assert "No Pods found" in result.stdout
+        assert "Errors" not in result.stdout
 
     def test_diag_all_rejects_invalid_max_concurrent(self):
         """Test --max-concurrent must be positive."""

@@ -271,6 +271,7 @@ def diag(
                         "failed": batch_result.failed,
                         "duration": batch_result.duration,
                         "errors": batch_result.errors,
+                        "messages": batch_result.messages,
                         "max_concurrent": max_concurrent,
                         "exit_code": batch_exit_code,
                     }
@@ -322,6 +323,11 @@ def diag(
                             resource = error.get("resource", "<unknown>")
                             detail = error.get("error", "<unknown>")
                             typer.echo(f"  - {resource}: {detail}")
+
+                if batch_result.messages:
+                    typer.echo(f"\nℹ️  Notes ({len(batch_result.messages)}):")
+                    for message in batch_result.messages[:5]:
+                        typer.echo(f"  - {message.get('message', '<unknown>')}")
 
                 typer.echo(f"\n⏱️  Completed in {batch_result.duration:.2f}s")
 
