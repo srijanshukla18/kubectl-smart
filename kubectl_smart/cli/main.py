@@ -251,9 +251,11 @@ def diag(
                 typer.echo(f"\n📋 BATCH DIAGNOSIS: {resource_type.value}s")
                 if namespace:
                     typer.echo(f"Namespace: {namespace}")
+                total_data_gaps = sum(len(r.data_gaps) for r in batch_result.results)
                 typer.echo(f"Total: {batch_result.total_resources} | "
                           f"Analyzed: {batch_result.successful} | "
-                          f"Failed: {batch_result.failed}")
+                          f"Failed: {batch_result.failed} | "
+                          f"Data gaps: {total_data_gaps}")
                 typer.echo("=" * 60)
 
                 for result in batch_result.results:
@@ -270,7 +272,14 @@ def diag(
                     if result.root_cause:
                         root_cause_str = f" - {result.root_cause.title}"
 
-                    typer.echo(f"  {result.subject.name}: {status} | {issues_str}{root_cause_str}")
+                    gap_str = ""
+                    if result.data_gaps:
+                        gap_str = f" | data gaps: {len(result.data_gaps)}"
+
+                    typer.echo(
+                        f"  {result.subject.name}: {status} | "
+                        f"{issues_str}{root_cause_str}{gap_str}"
+                    )
 
                 if batch_result.errors:
                     typer.echo(f"\n⚠️  Errors ({len(batch_result.errors)}):")

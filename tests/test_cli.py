@@ -127,6 +127,50 @@ class TestDiagCommand:
         result = runner.invoke(app, ["diag", "invalid", "test"])
         assert result.exit_code != 0
 
+    @patch("kubectl_smart.batch.BatchAnalyzer.diagnose_all")
+    def test_diag_all_text_output_includes_data_gaps(self, mock_diagnose_all):
+        """Test batch text output surfaces partial-evidence data gaps."""
+        from kubectl_smart.batch import BatchResult
+        from kubectl_smart.models import (
+            DiagnosisResult,
+            ResourceKind,
+            ResourceRecord,
+            SubjectCtx,
+        )
+
+        subject = SubjectCtx(
+            kind=ResourceKind.POD,
+            name="test-pod",
+            namespace="default",
+        )
+        resource = ResourceRecord(
+            kind=ResourceKind.POD,
+            name="test-pod",
+            uid="pod-uid",
+            namespace="default",
+            status="Running",
+        )
+        mock_diagnose_all.return_value = BatchResult(
+            total_resources=1,
+            successful=1,
+            failed=0,
+            results=[
+                DiagnosisResult(
+                    subject=subject,
+                    resource=resource,
+                    data_gaps=["events events unavailable (rbac): forbidden"],
+                    analysis_duration=0.1,
+                )
+            ],
+            duration=0.1,
+        )
+
+        result = runner.invoke(app, ["diag", "pod", "--all", "-n", "default"])
+
+        assert result.exit_code == 0
+        assert "Data gaps: 1" in result.stdout
+        assert "test-pod: Running | ✅ healthy | data gaps: 1" in result.stdout
+
 
 class TestGraphCommand:
     """Tests for graph command"""

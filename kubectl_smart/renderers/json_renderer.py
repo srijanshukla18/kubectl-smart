@@ -133,6 +133,7 @@ class JsonRenderer:
                 "successful": batch_info.get("successful", len(results)),
                 "failed": batch_info.get("failed", 0),
                 "duration_seconds": batch_info.get("duration", 0),
+                "data_gaps": sum(len(r.data_gaps) for r in results),
             },
             "results": [
                 {
@@ -146,6 +147,9 @@ class JsonRenderer:
                     "issue_count": len(r.issues),
                     "critical_count": len(r.critical_issues),
                     "warning_count": len(r.warning_issues),
+                    "suggested_actions": r.suggested_actions,
+                    "data_gaps": r.data_gaps,
+                    "data_gap_count": len(r.data_gaps),
                     "exit_code": 2 if r.critical_issues or r.warning_issues else 0,
                 }
                 for r in results
