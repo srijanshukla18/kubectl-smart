@@ -238,6 +238,11 @@ def diag(
                 namespace=namespace,
                 context=context,
             ))
+            has_issues = any(
+                r.critical_issues or r.warning_issues
+                for r in batch_result.results
+            )
+            batch_exit_code = 2 if batch_result.failed or has_issues else 0
 
             if output == "json":
                 renderer = JsonRenderer(pretty=True)
@@ -250,6 +255,7 @@ def diag(
                         "duration": batch_result.duration,
                         "errors": batch_result.errors,
                         "max_concurrent": max_concurrent,
+                        "exit_code": batch_exit_code,
                     }
                 ))
             else:
@@ -291,13 +297,17 @@ def diag(
                 if batch_result.errors:
                     typer.echo(f"\n⚠️  Errors ({len(batch_result.errors)}):")
                     for error in batch_result.errors[:5]:
-                        typer.echo(f"  - {error.get('resource')}: {error.get('error')}")
+                        if error.get("message"):
+                            typer.echo(f"  - {error.get('message')}")
+                        else:
+                            resource = error.get("resource", "<unknown>")
+                            detail = error.get("error", "<unknown>")
+                            typer.echo(f"  - {resource}: {detail}")
 
                 typer.echo(f"\n⏱️  Completed in {batch_result.duration:.2f}s")
 
-            # Exit code: 2 if any critical/warning issues found
-            has_issues = any(r.critical_issues or r.warning_issues for r in batch_result.results)
-            raise typer.Exit(2 if has_issues else 0)
+            # Exit code: 2 if issues or batch-level errors were found.
+            raise typer.Exit(batch_exit_code)
 
         except typer.Exit:
             raise

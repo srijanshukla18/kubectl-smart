@@ -562,3 +562,20 @@ class TestJsonRenderer:
         assert '"data_gap_count": 1' in output
         assert "events events unavailable" in output
         assert "kubectl auth can-i list events" in output
+
+    def test_render_batch_summary_includes_exit_code(self):
+        """Test JSON batch summary exposes the aggregate exit code."""
+        output = JsonRenderer().render_batch(
+            [],
+            {
+                "total": 0,
+                "successful": 0,
+                "failed": 1,
+                "duration": 0.1,
+                "errors": [{"message": "Failed to list pods: forbidden"}],
+                "exit_code": 2,
+            },
+        )
+
+        assert '"exit_code": 2' in output
+        assert "Failed to list pods: forbidden" in output

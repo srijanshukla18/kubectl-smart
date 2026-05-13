@@ -206,6 +206,49 @@ class TestDiagCommand:
         assert result.exit_code == 2
         assert "--max-concurrent must be >= 1" in result.output
 
+    @patch("kubectl_smart.batch.BatchAnalyzer.diagnose_all")
+    def test_diag_all_exits_nonzero_on_batch_errors(self, mock_diagnose_all):
+        """Test batch-level failures are not reported as successful CLI runs."""
+        from kubectl_smart.batch import BatchResult
+
+        mock_diagnose_all.return_value = BatchResult(
+            total_resources=0,
+            successful=0,
+            failed=1,
+            errors=[{"message": "Timed out after 0.1s listing pods"}],
+            duration=0.1,
+        )
+
+        result = runner.invoke(app, ["diag", "pod", "--all", "-n", "default"])
+
+        assert result.exit_code == 2
+        assert "Failed: 1" in result.stdout
+        assert "Timed out after 0.1s listing pods" in result.stdout
+        assert "None: None" not in result.stdout
+
+    @patch("kubectl_smart.batch.BatchAnalyzer.diagnose_all")
+    def test_diag_all_json_exits_nonzero_on_batch_errors(self, mock_diagnose_all):
+        """Test JSON batch output carries nonzero exit code for batch failures."""
+        from kubectl_smart.batch import BatchResult
+
+        mock_diagnose_all.return_value = BatchResult(
+            total_resources=0,
+            successful=0,
+            failed=1,
+            errors=[{"message": "Failed to list pods: forbidden"}],
+            duration=0.1,
+        )
+
+        result = runner.invoke(
+            app,
+            ["diag", "pod", "--all", "-n", "default", "-o", "json"],
+        )
+
+        assert result.exit_code == 2
+        assert '"failed": 1' in result.stdout
+        assert '"exit_code": 2' in result.stdout
+        assert "Failed to list pods: forbidden" in result.stdout
+
 
 class TestGraphCommand:
     """Tests for graph command"""
