@@ -215,8 +215,19 @@ class TerminalRenderer:
             
             # If no warnings, print honesty hints when data sources might be missing
             if not result.capacity_warnings and not result.certificate_warnings:
-                console.print("\n✅ No capacity or certificate issues predicted")
-                console.print("[dim]Note: Some signals require metrics-server and kubelet metrics. If unavailable, results may be limited.[/dim]")
+                if result.data_gaps:
+                    console.print(
+                        "\n⚪ No capacity or certificate issues predicted from available signals"
+                    )
+                    console.print(
+                        "[dim]Review DATA GAPS below before treating this as a clean forecast.[/dim]"
+                    )
+                else:
+                    console.print("\n✅ No capacity or certificate issues predicted")
+                    console.print(
+                        "[dim]Note: Some signals require metrics-server and kubelet metrics. "
+                        "If unavailable, results may be limited.[/dim]"
+                    )
 
             self._render_data_gaps(console, result.data_gaps)
             

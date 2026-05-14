@@ -70,6 +70,8 @@ coverage command above when working on test depth.
   watch mode, batch resource listing, and batch per-resource collectors
 - Top-level predictive outlook fails closed when the target namespace is missing
   while preserving the exact not-found data gap evidence
+- Top-level predictive outlook qualifies clean no-warning text when only partial
+  signals were available
 - Watch-state extraction for warning, critical, and unexpected exit codes,
   diagnosis-detail change detection, and data-gap appearance/resolution
 - Watch mode records failed checks and recovery in the event stream/summary

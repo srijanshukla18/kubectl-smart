@@ -463,6 +463,7 @@ class TestRenderTop:
 
         assert "PREDICTIVE OUTLOOK" in output
         assert "48" in output
+        assert "✅ No capacity or certificate issues predicted" in output
 
     def test_render_top_with_capacity_warnings(self, sample_subject_ctx):
         """Test top rendering with capacity warnings"""
@@ -559,8 +560,10 @@ class TestRenderTop:
         assert "2026-[blue]05[/blue]-15" in output
         assert "Renew [green]certificate[/green]" in output
 
-    def test_render_top_no_warnings(self, sample_subject_ctx):
-        """Test top rendering with no warnings"""
+    def test_render_top_no_warnings_with_data_gaps_is_qualified(
+        self, sample_subject_ctx
+    ):
+        """Test partial top rendering does not look like a clean forecast."""
         renderer = TerminalRenderer(colors_enabled=False)
         result = TopResult(
             subject=sample_subject_ctx,
@@ -570,7 +573,9 @@ class TestRenderTop:
         )
         output = renderer.render_top(result)
 
-        assert "No capacity or certificate issues predicted" in output
+        assert "No capacity or certificate issues predicted from available signals" in output
+        assert "Review DATA GAPS below" in output
+        assert "✅ No capacity or certificate issues predicted" not in output
         assert "DATA GAPS" in output
 
 
