@@ -5,8 +5,8 @@
 - Unit test command: `uv run --extra dev pytest`
 - Coverage command: `uv run --extra dev pytest --cov=kubectl_smart --cov-report=term-missing`
 - Local integration command: `KUBECTL_SMART_CONTEXT=kind-kubectl-smart-demo KUBECTL_SMART_CMD=./kubectl-smart ./test.sh`
-- Latest local result: `512 passed`
-- Latest measured coverage: `87%`
+- Latest local result: `515 passed`
+- Latest measured coverage: `88%`
 - Latest local integration result: `54 passed, 0 failed`
 
 Coverage is measured, not estimated. The default `pytest` command does not enforce
@@ -97,6 +97,8 @@ coverage command above when working on test depth.
   evidence when PVCs exist without usable volume metrics
 - Top-level predictive outlook collects node inventory and metrics-server node
   rows so current node CPU/memory pressure is visible without historical samples
+- Top-level predictive outlook preserves node inventory and node metrics
+  creation, collection, and parse failures as explicit data gaps
 - Watch-state extraction for warning, critical, and unexpected exit codes,
   diagnosis-detail change detection, and data-gap appearance/resolution
 - Watch mode exits nonzero when the watch loop itself fails

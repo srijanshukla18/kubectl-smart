@@ -1524,6 +1524,97 @@ class TestTopCommand:
 
     @pytest.mark.asyncio
     @patch("kubectl_smart.cli.commands.collector_registry")
+    async def test_collect_node_context_records_creation_gaps(
+        self, mock_collector_registry
+    ):
+        """Test node context setup failures stay visible as data gaps."""
+        mock_collector_registry.create.side_effect = RuntimeError("registry unavailable")
+
+        cmd = TopCommand()
+        subject = SubjectCtx(
+            kind=ResourceKind.NAMESPACE, name="default", namespace="default"
+        )
+        resources = await cmd._collect_node_context(subject)
+
+        assert resources == []
+        assert "get nodes collector unavailable: registry unavailable" in cmd.data_gaps
+        assert (
+            "metrics nodes collector unavailable: registry unavailable"
+            in cmd.data_gaps
+        )
+
+    @pytest.mark.asyncio
+    @patch("kubectl_smart.cli.commands.collector_registry")
+    @patch("kubectl_smart.cli.commands.parser_registry")
+    async def test_collect_node_context_records_runtime_gaps(
+        self, mock_parser_registry, mock_collector_registry
+    ):
+        """Test node context collection failures stay visible as data gaps."""
+
+        def create_collector(name, **kwargs):
+            resource_type = kwargs.get("resource_type", name)
+            collector = MagicMock()
+            collector.name = f"{name}_{resource_type}"
+            if resource_type == "nodes":
+                collector.collect = AsyncMock(
+                    side_effect=RuntimeError("apiserver gone")
+                )
+            else:
+                collector.collect = AsyncMock(
+                    return_value=RawBlob(data={}, source="metrics_node")
+                )
+            return collector
+
+        mock_collector_registry.create.side_effect = create_collector
+        mock_parser_registry.parse.return_value = []
+
+        cmd = TopCommand()
+        subject = SubjectCtx(
+            kind=ResourceKind.NAMESPACE, name="default", namespace="default"
+        )
+        resources = await cmd._collect_node_context(subject)
+
+        assert resources == []
+        assert "get nodes failed: apiserver gone" in cmd.data_gaps
+
+    @pytest.mark.asyncio
+    @patch("kubectl_smart.cli.commands.collector_registry")
+    @patch("kubectl_smart.cli.commands.parser_registry")
+    async def test_collect_node_context_records_parse_gaps(
+        self, mock_parser_registry, mock_collector_registry
+    ):
+        """Test node context parse failures stay visible as data gaps."""
+
+        def create_collector(name, **kwargs):
+            resource_type = kwargs.get("resource_type", name)
+            source = "get_nodes" if resource_type == "nodes" else "metrics_node"
+            collector = MagicMock()
+            collector.name = f"{name}_{resource_type}"
+            collector.collect = AsyncMock(return_value=RawBlob(data={}, source=source))
+            return collector
+
+        def parse(blob):
+            if blob.source == "metrics_node":
+                raise ValueError("bad metrics table")
+            return []
+
+        mock_collector_registry.create.side_effect = create_collector
+        mock_parser_registry.parse.side_effect = parse
+
+        cmd = TopCommand()
+        subject = SubjectCtx(
+            kind=ResourceKind.NAMESPACE, name="default", namespace="default"
+        )
+        resources = await cmd._collect_node_context(subject)
+
+        assert resources == []
+        assert (
+            "metrics nodes output could not be parsed: bad metrics table"
+            in cmd.data_gaps
+        )
+
+    @pytest.mark.asyncio
+    @patch("kubectl_smart.cli.commands.collector_registry")
     @patch("kubectl_smart.cli.commands.parser_registry")
     async def test_execute_surfaces_optional_collector_creation_data_gaps(
         self, mock_parser_registry, mock_collector_registry
