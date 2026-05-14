@@ -50,6 +50,7 @@ during a real Sev-1 without skepticism.
 | Kubelet PVC missing stats honesty | `demo-smoke.sh`; `tests/test_commands.py::TestTopCommand::test_execute_records_missing_pvc_metric_gap` |
 | Metrics RBAC guidance | `tests/test_collectors.py` pod-vs-node `metrics.k8s.io` checks; commit `9d6348d Clarify metrics RBAC checks` |
 | Node context collector failure honesty | `tests/test_commands.py` node context creation/runtime/parse gap tests; commit `ca006da Cover node context data gaps` |
+| Clean installed artifact | `uv build --wheel` produced `kubectl_smart-0.1.0-py3-none-any.whl`; fresh temp venv `uv pip install` succeeded; installed `kubectl-smart --version`, `--help`, and `top default --context kind-kubectl-smart-demo --timeout 2` ran successfully |
 | Current quality gates | `uv run --extra dev pytest --cov=kubectl_smart --cov-report=term-missing` -> `517 passed`, `88%`; ruff gate passed; warning-as-error pytest passed; `demo-smoke.sh` passed; `test.sh` -> `54 passed, 0 failed` |
 
 ## Current Evidence Snapshot
@@ -60,6 +61,9 @@ during a real Sev-1 without skepticism.
 - Whitespace gate: `git diff --check` passed.
 - Demo smoke: `KUBECTL_SMART_CONTEXT=kind-kubectl-smart-demo KUBECTL_SMART_CMD=./kubectl-smart ./demo-smoke.sh` passed.
 - Local integration: `KUBECTL_SMART_CONTEXT=kind-kubectl-smart-demo KUBECTL_SMART_CMD=./kubectl-smart ./test.sh` reported `54 passed, 0 failed`.
+- Packaging smoke: `uv build --wheel` succeeded, the wheel installed into a
+  fresh temp venv with `uv pip install`, and the installed CLI ran `--version`,
+  `--help`, and `top default --context kind-kubectl-smart-demo --timeout 2`.
 - Global kube context after work: `colima`.
 
 ## Residual Risk
@@ -69,8 +73,6 @@ during a real Sev-1 without skepticism.
   fixture plus parser/collector/unit tests.
 - No production-provider matrix has been run across EKS, GKE, AKS, OpenShift,
   and restricted enterprise RBAC variants.
-- No release artifact has been cut and installed as an end-user package in a
-  clean environment during this audit.
 - Some rare display and exception branches remain uncovered, though the main
   incident flows and degradation paths are covered.
 

@@ -240,6 +240,14 @@ uv run --frozen --extra dev ruff check kubectl_smart tests --select F,B,C4 --ign
 # Optional: run coverage
 uv run --extra dev pytest --cov=kubectl_smart --cov-report=term-missing
 
+# Optional: build and smoke-test an installable wheel
+uv build --wheel --out-dir /tmp/kubectl-smart-dist
+uv venv /tmp/kubectl-smart-venv
+uv pip install \
+  --python /tmp/kubectl-smart-venv/bin/python \
+  /tmp/kubectl-smart-dist/kubectl_smart-0.1.0-py3-none-any.whl
+/tmp/kubectl-smart-venv/bin/kubectl-smart --version
+
 # Optional: run Kubernetes scenario tests against an explicit local context
 export KUBECTL_SMART_CONTEXT=kind-kubectl-smart-demo
 ./kubectl-smart-lab.sh apply all
