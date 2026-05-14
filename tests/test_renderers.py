@@ -868,6 +868,7 @@ class TestJsonRenderer:
         assert '"evidence"' in output
         assert 'secret \\"token\\" not found' in output
         assert '"data_gaps"' in output
+        assert parsed["analysis_complete"] is True
         assert parsed["root_cause"]["evidence_count"] == 1
         assert parsed["root_cause"]["evidence_complete"] is True
 
@@ -896,6 +897,7 @@ class TestJsonRenderer:
         assert parsed["root_cause"]["evidence"] == []
         assert parsed["root_cause"]["evidence_count"] == 0
         assert parsed["root_cause"]["evidence_complete"] is False
+        assert parsed["analysis_complete"] is False
 
     def test_render_diagnosis_includes_issue_metadata(
         self, sample_subject_ctx, sample_resource_record
@@ -1129,6 +1131,41 @@ class TestJsonRenderer:
         assert parsed["results"][0]["status"] is None
         assert parsed["results"][0]["analysis_complete"] is False
         assert parsed["results"][0]["exit_code"] == 2
+
+    def test_render_batch_marks_unsupported_issue_evidence_incomplete(
+        self, sample_subject_ctx, sample_resource_record
+    ):
+        """Test batch completeness reflects unsupported root-cause evidence."""
+        issue = Issue(
+            resource_uid=sample_resource_record.uid,
+            title="Warning Without Evidence",
+            description="Warning issue",
+            severity=IssueSeverity.WARNING,
+            score=70.0,
+            reason="Warning",
+            message="Warning",
+        )
+        result = DiagnosisResult(
+            subject=sample_subject_ctx,
+            resource=sample_resource_record,
+            root_cause=issue,
+            analysis_duration=1.0,
+        )
+
+        parsed = json.loads(
+            JsonRenderer().render_batch(
+                [result],
+                {
+                    "total": 1,
+                    "successful": 1,
+                    "failed": 0,
+                    "duration": 1.0,
+                },
+            )
+        )
+
+        assert parsed["summary"]["analysis_complete"] is False
+        assert parsed["results"][0]["analysis_complete"] is False
 
     def test_render_diagnosis_uses_warning_exit_code(
         self, sample_subject_ctx, sample_resource_record

@@ -222,7 +222,10 @@ class JsonRenderer:
 
     def _diagnosis_analysis_complete(self, result: DiagnosisResult) -> bool:
         """Return whether diagnosis JSON has complete target evidence."""
-        return result.resource is not None and not result.data_gaps
+        if result.resource is None or result.data_gaps:
+            return False
+
+        return all(issue.evidence for issue in result.diagnostic_issues)
 
     def _serialize_resource(self, resource: ResourceRecord) -> dict[str, Any]:
         """Serialize ResourceRecord to dict"""
