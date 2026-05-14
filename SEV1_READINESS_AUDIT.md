@@ -49,7 +49,7 @@ during a real Sev-1 without skepticism.
 | Kubelet PVC happy path | `tests/test_cli.py::TestTopCommand::test_top_metrics_happy_path_with_fake_kubectl`; `tests/test_commands.py::TestTopCommand::test_execute_merges_kubelet_pvc_metrics_before_forecast` |
 | Kubelet PVC missing stats honesty | `demo-smoke.sh`; `tests/test_commands.py::TestTopCommand::test_execute_records_missing_pvc_metric_gap` |
 | Live metrics-server behavior | `metrics-live-smoke.sh` creates a throwaway kind cluster, installs metrics-server, verifies `kubectl top node`, waits for pod metrics, and checks `kubectl-smart top` does not report pod/node metrics data gaps |
-| Provider-style compatibility | `provider-compat-smoke.sh` is read-only, requires an explicit context, cross-checks direct `kubectl top` availability against `kubectl-smart top` data gaps, and runs `diag`/`graph` against an existing Pod when present |
+| Provider-style compatibility | `provider-compat-smoke.sh` is read-only, requires an explicit context, uses bounded kubectl request timeouts, cross-checks direct `kubectl top` availability against `kubectl-smart top` data gaps, and runs `diag`/`graph` against an existing Pod when present |
 | Metrics RBAC guidance | `tests/test_collectors.py` pod-vs-node `metrics.k8s.io` checks; commit `9d6348d Clarify metrics RBAC checks` |
 | Metrics warmup guidance | `tests/test_collectors.py::TestCollectorBase::test_create_failure_blob_records_metrics_not_ready_check`; commit `62254a4 Clarify metrics warmup gaps` |
 | Unexpected top failure path | `tests/test_commands.py::TestTopCommand::test_execute_forecast_failure_preserves_data_gaps` verifies forecasting exceptions preserve collected data gaps |

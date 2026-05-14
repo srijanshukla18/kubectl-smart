@@ -284,6 +284,8 @@ Local demo safety:
 - `provider-compat-smoke.sh` is read-only and requires an explicit context. It
   cross-checks direct `kubectl top` availability against `kubectl-smart top`
   data gaps and runs `diag`/`graph` on an existing Pod when one is available.
+  Set `KUBECTL_REQUEST_TIMEOUT=2s` when checking a possibly-offline context
+  and you want Kubernetes API discovery to fail fast.
 - `test.sh` exits nonzero if any integration check fails, so it is safe to use
   as a local gate instead of a best-effort transcript.
 - `demo-smoke.sh` passes explicit contexts for both the admin demo context and

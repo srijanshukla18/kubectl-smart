@@ -116,7 +116,8 @@ coverage command above when working on test depth.
   is available
 - Read-only provider compatibility smoke cross-checks `kubectl top` availability
   against `kubectl-smart top` data gaps and exercises `diag`/`graph` on an
-  existing Pod without changing the selected global context
+  existing Pod without changing the selected global context; kubectl API
+  checks use a configurable request timeout so offline contexts fail visibly
 - Metrics-server node rows feed capacity forecasting without becoming duplicate
   node inventory targets
 - Watch-state extraction for warning, critical, and unexpected exit codes,

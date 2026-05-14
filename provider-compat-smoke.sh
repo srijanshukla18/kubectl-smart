@@ -3,6 +3,7 @@ set -euo pipefail
 
 CONTEXT="${KUBECTL_SMART_CONTEXT:-${1:-}}"
 NAMESPACE="${NAMESPACE:-kube-system}"
+KUBECTL_REQUEST_TIMEOUT="${KUBECTL_REQUEST_TIMEOUT:-8s}"
 KUBECTL_SMART_CMD_STRING="${KUBECTL_SMART_CMD:-./kubectl-smart}"
 KUBECTL_SMART_TIMEOUT="${KUBECTL_SMART_TIMEOUT:-5}"
 KUBECTL_SMART_CMD=()
@@ -27,6 +28,10 @@ trap cleanup EXIT
 
 require_command() {
   command -v "$1" >/dev/null 2>&1 || fail "Missing required command: $1"
+}
+
+kubectl_for_context() {
+  kubectl --context "$CONTEXT" --request-timeout "$KUBECTL_REQUEST_TIMEOUT" "$@"
 }
 
 capture() {
@@ -109,14 +114,18 @@ previous_context="$(kubectl config current-context 2>/dev/null || true)"
 
 log "Provider compatibility smoke context: $CONTEXT"
 log "Namespace: $NAMESPACE"
+log "kubectl request timeout: $KUBECTL_REQUEST_TIMEOUT"
 log "kubectl-smart command: $KUBECTL_SMART_CMD_STRING"
 
-kubectl --context "$CONTEXT" get namespace "$NAMESPACE" >/dev/null
-kubectl --context "$CONTEXT" get --raw /version >/dev/null
+capture namespace kubectl_for_context get namespace "$NAMESPACE" >/dev/null
+assert_status namespace 0
+
+capture version kubectl_for_context get --raw /version >/dev/null
+assert_status version 0
 
 top_node="${tmpdir}/kubectl-top-node.out"
 set +e
-kubectl --context "$CONTEXT" top node >"$top_node" 2>&1
+kubectl_for_context top node >"$top_node" 2>&1
 node_metrics_status=$?
 set -e
 if [ "$node_metrics_status" = "0" ]; then
@@ -128,7 +137,7 @@ fi
 
 top_pods="${tmpdir}/kubectl-top-pods.out"
 set +e
-kubectl --context "$CONTEXT" -n "$NAMESPACE" top pods >"$top_pods" 2>&1
+kubectl_for_context -n "$NAMESPACE" top pods >"$top_pods" 2>&1
 pod_metrics_status=$?
 set -e
 if [ "$pod_metrics_status" = "0" ]; then
@@ -157,7 +166,7 @@ else
 fi
 
 first_pod="$(
-  kubectl --context "$CONTEXT" -n "$NAMESPACE" get pods \
+  kubectl_for_context -n "$NAMESPACE" get pods \
     -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true
 )"
 
