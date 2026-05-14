@@ -151,7 +151,7 @@ class TestDiagCommand:
 
         assert result.exit_code == 2
         assert "\x1b" not in result.stderr
-        assert "Error: boom red\\rnow" in result.stderr
+        assert "Error: boom \\x1b[31mred\\x1b[0m\\rnow" in result.stderr
 
     def test_diag_invalid_output_sanitizes_control_sequences(self):
         """Test invalid output-format errors sanitize the user value."""
@@ -162,7 +162,7 @@ class TestDiagCommand:
 
         assert result.exit_code == 2
         assert "\x1b" not in result.stderr
-        assert "Invalid output format 'badred'" in result.stderr
+        assert "Invalid output format 'bad\\x1b[31mred\\x1b[0m'" in result.stderr
 
     def test_diag_json_missing_name_error_stays_json(self):
         """Test early JSON diag validation errors stay JSON."""
@@ -457,8 +457,8 @@ class TestDiagCommand:
 
         assert result.exit_code == 2
         assert "\x1b" not in result.stdout
-        assert "Runningred" in result.stdout
-        assert "Log Errors\\rInjected" in result.stdout
+        assert "Running\\x1b[31mred\\x1b[0m" in result.stdout
+        assert "Log \\x1b[31mErrors\\x1b[0m\\rInjected" in result.stdout
 
     @patch("kubectl_smart.batch.BatchAnalyzer")
     def test_diag_all_passes_max_concurrent(self, mock_batch_analyzer):
@@ -855,7 +855,7 @@ class TestGraphCommand:
 
         assert result.exit_code == 2
         assert "\x1b" not in result.stderr
-        assert "Error: boom red\\rnow" in result.stderr
+        assert "Error: boom \\x1b[31mred\\x1b[0m\\rnow" in result.stderr
 
 
 class TestTopCommand:
@@ -957,7 +957,7 @@ class TestTopCommand:
 
         assert result.exit_code == 2
         assert "\x1b" not in result.stderr
-        assert "Error: boom red\\rnow" in result.stderr
+        assert "Error: boom \\x1b[31mred\\x1b[0m\\rnow" in result.stderr
 
 
 class TestLegacyCommands:

@@ -4,7 +4,7 @@
 
 - Unit test command: `uv run --extra dev pytest`
 - Coverage command: `uv run --extra dev pytest --cov=kubectl_smart --cov-report=term-missing`
-- Latest local result: `488 passed`
+- Latest local result: `489 passed`
 - Latest measured coverage: `86%`
 
 Coverage is measured, not estimated. The default `pytest` command does not enforce
@@ -49,7 +49,7 @@ coverage command above when working on test depth.
   and RBAC permission text escape Rich markup so evidence remains literal
 - Terminal recent-event tables fold long values instead of ellipsizing evidence,
   and predictive warnings render inspectable resource/action values
-- Terminal and batch-text evidence sanitizes ANSI/control sequences from logs,
+- Terminal and batch-text evidence escapes ANSI/control sequences from logs,
   events, errors, and other Kubernetes strings before rendering
 - CLI text error paths sanitize ANSI/control sequences before writing stderr
 - JSON rendering contracts, including surfaced diagnostic issues, data gaps,
@@ -82,8 +82,8 @@ coverage command above when working on test depth.
 - Watch-state extraction for warning, critical, and unexpected exit codes,
   diagnosis-detail change detection, and data-gap appearance/resolution
 - Watch mode exits nonzero when the watch loop itself fails
-- Watch mode sanitizes ANSI/control sequences in fatal errors and change lines
-- Terminal/watch identity headers and watch log fields sanitize ANSI/control
+- Watch mode escapes ANSI/control sequences in fatal errors and change lines
+- Terminal/watch identity headers and watch log fields escape ANSI/control
   sequences before display/logging
 - Watch mode records failed checks and recovery in the event stream/summary
 

@@ -9,9 +9,7 @@ producing the exact output format described in the product specification.
 
 from typing import List, Optional
 
-from rich.ansi import AnsiDecoder
 from rich.console import Console
-from rich.control import escape_control_codes
 from rich.markup import escape
 from rich.table import Table
 
@@ -26,8 +24,30 @@ from ..models import (
 
 def terminal_plain_text(value: object) -> str:
     """Return Kubernetes text without terminal control effects."""
-    escaped_controls = escape_control_codes(str(value))
-    return "\n".join(text.plain for text in AnsiDecoder().decode(escaped_controls))
+    visible: list[str] = []
+    control_escapes = {
+        "\a": "\\a",
+        "\b": "\\b",
+        "\t": "\\t",
+        "\n": "\n",
+        "\v": "\\v",
+        "\f": "\\f",
+        "\r": "\\r",
+        "\x1b": "\\x1b",
+    }
+
+    for char in str(value):
+        if char in control_escapes:
+            visible.append(control_escapes[char])
+            continue
+
+        codepoint = ord(char)
+        if codepoint < 32 or codepoint == 127 or 0x80 <= codepoint <= 0x9F:
+            visible.append(f"\\x{codepoint:02x}")
+        else:
+            visible.append(char)
+
+    return "".join(visible)
 
 
 

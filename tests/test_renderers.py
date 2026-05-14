@@ -13,7 +13,7 @@ from kubectl_smart.models import (
     TopResult,
 )
 from kubectl_smart.renderers.json_renderer import JsonRenderer
-from kubectl_smart.renderers.terminal import TerminalRenderer
+from kubectl_smart.renderers.terminal import TerminalRenderer, terminal_plain_text
 
 
 class TestTerminalRenderer:
@@ -34,6 +34,10 @@ class TestTerminalRenderer:
         """Test TerminalRenderer with custom width"""
         renderer = TerminalRenderer(width=80)
         assert renderer.console.size.width == 80
+
+    def test_terminal_plain_text_escapes_uncommon_control_bytes(self):
+        """Test uncommon control bytes are visible instead of executable."""
+        assert terminal_plain_text("before\x00after\x7f") == "before\\x00after\\x7f"
 
 
 class TestRenderDiagnosis:
@@ -138,11 +142,10 @@ class TestRenderDiagnosis:
         output = renderer.render_diagnosis(result)
 
         assert "\x1b" not in output
-        assert "Errors" in output
-        assert "panic" in output
+        assert "Log \\x1b[31mErrors\\x1b[0m" in output
+        assert "Log line: \\x1b[31mpanic\\x1b[0m\\a" in output
         assert "\\rwhile starting" in output
-        assert "\\a" in output
-        assert "Back-off restart" in output
+        assert "Back-off \\x1b[31mrestart\\x1b[0m" in output
 
     def test_render_headers_sanitize_terminal_control_sequences(self):
         """Test object identity headers cannot emit terminal control sequences."""
@@ -169,7 +172,7 @@ class TestRenderDiagnosis:
         output = diagnosis + graph + top
 
         assert "\x1b" not in output
-        assert "apired" in output
+        assert "api\\x1b[31mred\\x1b[0m" in output
 
     def test_render_diagnosis_root_cause_only_is_nonzero(
         self, sample_subject_ctx, sample_resource_record, sample_issue
@@ -758,7 +761,7 @@ class TestRenderError:
         )
 
         assert "\x1b" not in output
-        assert "Main error" in output
+        assert "Main \\x1b[31merror\\x1b[0m" in output
         assert "Detail\\rcontext" in output
 
 

@@ -129,8 +129,8 @@ def test_watch_print_changes_sanitizes_control_sequences(capsys):
     output = capsys.readouterr().out
 
     assert "\x1b" not in output
-    assert "Log Errors\\rInjected" in output
-    assert "logs blocked\\a" in output
+    assert "Log \\x1b[31mErrors\\x1b[0m\\rInjected" in output
+    assert "logs \\x1b[31mblocked\\x1b[0m\\a" in output
 
 
 @pytest.mark.asyncio
@@ -341,6 +341,6 @@ async def test_watch_start_returns_error_code_for_fatal_loop_error(
 
     assert exit_code == 2
     assert "\x1b" not in output
-    assert "Monitoring Pod/default/apired" in output
-    assert "Watch error: terminal refresh failed\\rnow" in output
+    assert "Monitoring Pod/default/api\\x1b[31mred\\x1b[0m" in output
+    assert "Watch error: terminal \\x1b[31mrefresh\\x1b[0m failed\\rnow" in output
     assert watcher.running is False
