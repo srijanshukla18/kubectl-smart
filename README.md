@@ -260,6 +260,9 @@ KUBECTL_SMART_CMD=kubectl-smart ./test.sh
 ./demo-complex-scenarios.sh apply
 ./demo-smoke.sh
 
+# Optional: create a throwaway kind cluster and verify live metrics-server behavior
+./metrics-live-smoke.sh
+
 # Test individual commands
 kubectl-smart --help
 kubectl-smart diag --help
@@ -272,6 +275,9 @@ Local demo safety:
 - `test.sh` and `demo-smoke.sh` default to the current checkout via
   `./kubectl-smart`. Set `KUBECTL_SMART_CMD=kubectl-smart` when you
   specifically want to validate an installed binary.
+- `metrics-live-smoke.sh` creates and deletes a separate throwaway kind cluster
+  so metrics-server validation does not alter the demo cluster or its
+  intentional failures.
 - `test.sh` exits nonzero if any integration check fails, so it is safe to use
   as a local gate instead of a best-effort transcript.
 - `demo-smoke.sh` passes explicit contexts for both the admin demo context and

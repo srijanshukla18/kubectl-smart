@@ -5,9 +5,11 @@
 - Unit test command: `uv run --extra dev pytest`
 - Coverage command: `uv run --extra dev pytest --cov=kubectl_smart --cov-report=term-missing`
 - Local integration command: `KUBECTL_SMART_CONTEXT=kind-kubectl-smart-demo KUBECTL_SMART_CMD=./kubectl-smart ./test.sh`
+- Live metrics command: `KUBECTL_SMART_CMD=./kubectl-smart ./metrics-live-smoke.sh`
 - Latest local result: `517 passed`
 - Latest measured coverage: `88%`
 - Latest local integration result: `54 passed, 0 failed`
+- Latest live metrics result: passed against a throwaway kind cluster
 
 Coverage is measured, not estimated. The default `pytest` command does not enforce
 coverage so contributors get a clear functional signal first. Use the explicit
@@ -101,6 +103,9 @@ coverage command above when working on test depth.
   creation, collection, and parse failures as explicit data gaps
 - CLI-level predictive outlook is exercised with a fake `kubectl` happy path
   for metrics-server pod metrics, node metrics, and kubelet PVC volume stats
+- Live metrics-server validation in a throwaway kind cluster verifies
+  `kubectl-smart top` does not report pod/node metrics gaps when metrics-server
+  is available
 - Metrics-server node rows feed capacity forecasting without becoming duplicate
   node inventory targets
 - Watch-state extraction for warning, critical, and unexpected exit codes,

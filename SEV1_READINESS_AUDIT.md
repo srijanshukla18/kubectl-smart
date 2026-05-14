@@ -48,6 +48,7 @@ during a real Sev-1 without skepticism.
 | Node metrics duplicate prevention | `tests/test_forecast.py::TestPredictCapacityIssues::test_predict_capacity_issues_ignores_metrics_only_node_inventory` |
 | Kubelet PVC happy path | `tests/test_cli.py::TestTopCommand::test_top_metrics_happy_path_with_fake_kubectl`; `tests/test_commands.py::TestTopCommand::test_execute_merges_kubelet_pvc_metrics_before_forecast` |
 | Kubelet PVC missing stats honesty | `demo-smoke.sh`; `tests/test_commands.py::TestTopCommand::test_execute_records_missing_pvc_metric_gap` |
+| Live metrics-server behavior | `metrics-live-smoke.sh` creates a throwaway kind cluster, installs metrics-server, verifies `kubectl top node`, waits for pod metrics, and checks `kubectl-smart top` does not report pod/node metrics data gaps |
 | Metrics RBAC guidance | `tests/test_collectors.py` pod-vs-node `metrics.k8s.io` checks; commit `9d6348d Clarify metrics RBAC checks` |
 | Node context collector failure honesty | `tests/test_commands.py` node context creation/runtime/parse gap tests; commit `ca006da Cover node context data gaps` |
 | Clean installed artifact | `uv build --wheel` produced `kubectl_smart-0.1.0-py3-none-any.whl`; fresh temp venv `uv pip install` succeeded; installed `kubectl-smart --version`, `--help`, and `top default --context kind-kubectl-smart-demo --timeout 2` ran successfully |
@@ -61,6 +62,11 @@ during a real Sev-1 without skepticism.
 - Whitespace gate: `git diff --check` passed.
 - Demo smoke: `KUBECTL_SMART_CONTEXT=kind-kubectl-smart-demo KUBECTL_SMART_CMD=./kubectl-smart ./demo-smoke.sh` passed.
 - Local integration: `KUBECTL_SMART_CONTEXT=kind-kubectl-smart-demo KUBECTL_SMART_CMD=./kubectl-smart ./test.sh` reported `54 passed, 0 failed`.
+- Live metrics-server smoke: `KUBECTL_SMART_CMD=./kubectl-smart ./metrics-live-smoke.sh`
+  passed. Evidence included `kubectl top node` returning CPU/memory, `kubectl
+  top pods` returning pod metrics, `kubectl-smart top default` with no
+  metrics-server data gaps, and a PVC-backed namespace reporting only the
+  missing kubelet PVC volume-stats gap.
 - Packaging smoke: `uv build --wheel` succeeded, the wheel installed into a
   fresh temp venv with `uv pip install`, and the installed CLI ran `--version`,
   `--help`, and `top default --context kind-kubectl-smart-demo --timeout 2`.
@@ -68,9 +74,9 @@ during a real Sev-1 without skepticism.
 
 ## Residual Risk
 
-- No true live-cluster run has installed metrics-server and exercised real
-  metrics.k8s.io responses; the current coverage uses a hermetic fake `kubectl`
-  fixture plus parser/collector/unit tests.
+- No live cluster in this audit exposed kubelet `kubelet_volume_stats_*` for a
+  PVC; PVC volume-stat happy path is covered by fake `kubectl` and command
+  tests, while the live kind run confirmed the missing-stats data gap.
 - No production-provider matrix has been run across EKS, GKE, AKS, OpenShift,
   and restricted enterprise RBAC variants.
 - Some rare display and exception branches remain uncovered, though the main
