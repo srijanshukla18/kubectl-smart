@@ -571,6 +571,8 @@ class TestRenderTop:
         assert "PREDICTIVE OUTLOOK" in output
         assert "48" in output
         assert "✅ No capacity or certificate issues predicted" in output
+        assert "No data gaps were recorded for the collected signals" in output
+        assert "Some signals require metrics-server" not in output
 
     def test_render_top_with_capacity_warnings(self, sample_subject_ctx):
         """Test top rendering with capacity warnings"""

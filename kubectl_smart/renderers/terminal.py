@@ -252,8 +252,7 @@ class TerminalRenderer:
                 else:
                     console.print("\n✅ No capacity or certificate issues predicted")
                     console.print(
-                        "[dim]Note: Some signals require metrics-server and kubelet metrics. "
-                        "If unavailable, results may be limited.[/dim]"
+                        "[dim]No data gaps were recorded for the collected signals.[/dim]"
                     )
 
             self._render_data_gaps(console, result.data_gaps)

@@ -95,6 +95,8 @@ coverage command above when working on test depth.
   while preserving the exact not-found data gap evidence
 - Top-level predictive outlook qualifies clean no-warning text when only partial
   signals were available
+- Top-level predictive outlook says no data gaps were recorded when all
+  collected signals completed cleanly
 - Top-level predictive outlook preserves optional collector resource type on
   collect/parse failures so incomplete Secret inventory still qualifies TLS
   forecasts
