@@ -147,6 +147,7 @@ class JsonRenderer:
         critical_count = sum(len(r.critical_issues) for r in results)
         warning_count = sum(len(r.warning_issues) for r in results)
         data_gap_count = sum(len(r.data_gaps) for r in results)
+        not_found_count = sum(1 for r in results if r.resource is None)
         analysis_complete = not failed and all(
             self._diagnosis_analysis_complete(result) for result in results
         )
@@ -157,6 +158,7 @@ class JsonRenderer:
                 "total_resources": batch_info.get("total", len(results)),
                 "successful": batch_info.get("successful", len(results)),
                 "failed": failed,
+                "not_found": not_found_count,
                 "critical": critical_count,
                 "warning": warning_count,
                 "duration_seconds": batch_info.get("duration", 0),

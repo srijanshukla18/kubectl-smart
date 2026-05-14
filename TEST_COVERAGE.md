@@ -59,6 +59,7 @@ coverage command above when working on test depth.
 - Batch text and JSON summaries preserve label selector scope
 - Batch text rows with data gaps are labeled as incomplete analysis instead of
   healthy/clean
+- Batch text and JSON summaries expose a separate not-found resource count
 - Explicit `--timeout` flows through single-resource diagnosis, graph, top,
   watch mode, batch resource listing, and batch per-resource collectors
 - Top-level predictive outlook fails closed when the target namespace is missing

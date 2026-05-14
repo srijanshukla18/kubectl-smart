@@ -378,7 +378,7 @@ class TestDiagCommand:
         result = runner.invoke(app, ["diag", "pod", "--all", "-n", "default"])
 
         assert result.exit_code == 0
-        assert "Data gaps: 1 | Concurrency: 5" in result.stdout
+        assert "Failed: 0 | Not found: 0 | Data gaps: 1 | Concurrency: 5" in result.stdout
         assert "test-pod: Running | ⚪ incomplete analysis | data gaps: 1" in result.stdout
 
     @patch("kubectl_smart.batch.BatchAnalyzer")
@@ -582,6 +582,7 @@ class TestDiagCommand:
         result = runner.invoke(app, ["diag", "pod", "--all", "-n", "default"])
 
         assert result.exit_code == 2
+        assert "Not found: 1" in result.stdout
         assert "vanished: Unknown | ❌ not found" in result.stdout
         assert "✅ healthy" not in result.stdout
 

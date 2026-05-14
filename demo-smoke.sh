@@ -192,6 +192,7 @@ log "Checking admin batch diagnosis reports namespace-scale data gaps..."
 batch_diag="$(capture batch_diag "${KUBECTL_SMART_CMD[@]}" diag pod --all -n "$NAMESPACE" --max-concurrent 1 --context "$KUBECTL_SMART_CONTEXT")"
 assert_status batch_diag 2
 assert_contains "$batch_diag" "Total: 3 | Analyzed: 3 | Failed: 0" "batch summary"
+assert_contains "$batch_diag" "Not found: 0" "batch not-found summary"
 assert_contains "$batch_diag" "Data gaps:" "batch data-gap summary"
 assert_contains "$batch_diag" "Concurrency: 1" "batch concurrency summary"
 
@@ -246,6 +247,7 @@ log "Checking restricted batch text marks incomplete clean rows..."
 restricted_batch_text="$(capture restricted_batch_text env KUBECONFIG="$RBAC_KUBECONFIG" "${KUBECTL_SMART_CMD[@]}" diag pod --all -n "$NAMESPACE" --context "$RBAC_CONTEXT")"
 assert_status restricted_batch_text 2
 assert_contains "$restricted_batch_text" "Data gaps: 6" "restricted batch text total gaps"
+assert_contains "$restricted_batch_text" "Not found: 0" "restricted batch text not-found count"
 assert_contains "$restricted_batch_text" "Running | ⚪ incomplete analysis | data gaps: 2" "restricted batch incomplete row"
 
 log "Checking fulfillment graph preserves the missing env Secret dependency..."

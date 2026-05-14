@@ -59,6 +59,9 @@ Output and modes:
   narrowing a large namespace during incident triage.
 - In batch text output, rows with data gaps are labeled `incomplete analysis`
   instead of healthy/clean, even if no warning or critical issue was surfaced.
+- Batch summaries include a separate `Not found` / `summary.not_found` count
+  for resources that disappeared or could not be retrieved after the initial
+  list.
 - `--timeout` sets the per-kubectl collector timeout, including the initial
   batch list call and each per-resource diagnosis in `--all` mode.
 - `--context` pins the kubectl context. For repeatable local demos/tests, you can also set `KUBECTL_SMART_CONTEXT=kind-kubectl-smart-demo`.

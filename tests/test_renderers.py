@@ -959,6 +959,7 @@ class TestJsonRenderer:
         parsed = json.loads(output)
         assert parsed["summary"]["exit_code"] == 2
         assert parsed["summary"]["analysis_complete"] is False
+        assert parsed["summary"]["not_found"] == 1
         assert parsed["results"][0]["status"] is None
         assert parsed["results"][0]["analysis_complete"] is False
         assert parsed["results"][0]["exit_code"] == 2

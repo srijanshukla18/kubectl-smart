@@ -333,9 +333,13 @@ def diag(
                 if label_selector:
                     typer.echo(f"Selector: {label_selector}")
                 total_data_gaps = sum(len(r.data_gaps) for r in batch_result.results)
+                not_found_count = sum(
+                    1 for result in batch_result.results if result.resource is None
+                )
                 typer.echo(f"Total: {batch_result.total_resources} | "
                           f"Analyzed: {batch_result.successful} | "
                           f"Failed: {batch_result.failed} | "
+                          f"Not found: {not_found_count} | "
                           f"Data gaps: {total_data_gaps} | "
                           f"Concurrency: {max_concurrent}")
                 typer.echo("=" * 60)
