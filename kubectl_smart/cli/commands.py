@@ -1031,43 +1031,58 @@ class GraphCommand(BaseCommand):
         cluster_resource_types = ["nodes", "persistentvolumes"]
 
         collectors = []
-        subjects = []
         list_subject = subject.model_copy(update={"name": ""})
         cluster_subject = subject.model_copy(update={"name": "", "namespace": None})
 
         for resource_type in namespace_resource_types:
             try:
-                collectors.append(self._create_collector("get", resource_type=resource_type))
-                subjects.append(list_subject)
+                collector = self._create_collector("get", resource_type=resource_type)
+                collectors.append((resource_type, collector, list_subject))
             except Exception as e:
                 logger.warning("Failed to create graph collector", resource_type=resource_type, error=str(e))
                 self._record_collector_creation_gap("get", e, resource_type)
 
         for resource_type in cluster_resource_types:
             try:
-                collectors.append(self._create_collector("get", resource_type=resource_type))
-                subjects.append(cluster_subject)
+                collector = self._create_collector("get", resource_type=resource_type)
+                collectors.append((resource_type, collector, cluster_subject))
             except Exception as e:
                 logger.warning("Failed to create graph collector", resource_type=resource_type, error=str(e))
                 self._record_collector_creation_gap("get", e, resource_type)
 
         blobs = await asyncio.gather(
-            *[collector.collect(collector_subject) for collector, collector_subject in zip(collectors, subjects)],
+            *[
+                collector.collect(collector_subject)
+                for _, collector, collector_subject in collectors
+            ],
             return_exceptions=True,
         )
 
         resources = []
-        for i, blob in enumerate(blobs):
+        for (resource_type, collector, _), blob in zip(collectors, blobs):
+            collector_label = f"get {resource_type}"
             if isinstance(blob, Exception):
-                logger.warning("Graph collector failed", collector=collectors[i].name, error=str(blob))
-                self._record_exception_gap(collectors[i].name, blob)
+                logger.warning(
+                    "Graph collector failed",
+                    collector=collector.name,
+                    resource_type=resource_type,
+                    error=str(blob),
+                )
+                self._record_exception_gap(collector_label, blob)
                 continue
             self._record_blob_gap(blob)
             try:
                 resources.extend(parser_registry.parse(blob))
             except Exception as e:
-                logger.warning("Failed to parse graph data", collector=collectors[i].name, error=str(e))
-                self._add_data_gap(f"{collectors[i].name} output could not be parsed: {str(e).splitlines()[0]}")
+                logger.warning(
+                    "Failed to parse graph data",
+                    collector=collector.name,
+                    resource_type=resource_type,
+                    error=str(e),
+                )
+                self._add_data_gap(
+                    f"{collector_label} output could not be parsed: {str(e).splitlines()[0]}"
+                )
 
         return resources
     

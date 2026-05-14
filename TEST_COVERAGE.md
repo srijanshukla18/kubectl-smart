@@ -4,8 +4,8 @@
 
 - Unit test command: `uv run --extra dev pytest`
 - Coverage command: `uv run --extra dev pytest --cov=kubectl_smart --cov-report=term-missing`
-- Latest local result: `497 passed`
-- Latest measured coverage: `86%`
+- Latest local result: `499 passed`
+- Latest measured coverage: `87%`
 
 Coverage is measured, not estimated. The default `pytest` command does not enforce
 coverage so contributors get a clear functional signal first. Use the explicit
@@ -28,6 +28,8 @@ coverage command above when working on test depth.
 - Graph relationship extraction and traversal
 - Graph not-found messaging distinguishes incomplete target inventory from
   confirmed absence in a complete graph collection
+- Graph collection runtime and parse failures preserve Kubernetes resource-type
+  context in data gaps
 - Controller diagnoses promote child Pod failures through ownerReference and
   selector relationships, with StatefulSet/DaemonSet/ReplicaSet readiness
   counters parsed into availability status

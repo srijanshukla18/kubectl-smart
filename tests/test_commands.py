@@ -1118,6 +1118,99 @@ class TestGraphCommand:
         assert "DATA GAPS" in result.output
         assert "get secrets collector unavailable: registry unavailable" in result.output
 
+    @pytest.mark.asyncio
+    @patch("kubectl_smart.cli.commands.collector_registry")
+    @patch("kubectl_smart.cli.commands.parser_registry")
+    async def test_execute_surfaces_collector_runtime_data_gaps(
+        self, mock_parser_registry, mock_collector_registry
+    ):
+        """Test graph labels runtime collector failures by resource type."""
+        pod = ResourceRecord(
+            kind=ResourceKind.POD,
+            name="test-pod",
+            uid="pod-uid-123",
+            namespace="default",
+            status="Running",
+        )
+
+        def create_collector(name, **kwargs):
+            resource_type = kwargs.get("resource_type", "generic")
+            collector = MagicMock()
+            collector.name = f"{name}_{resource_type}"
+            if resource_type == "secrets":
+                collector.collect = AsyncMock(
+                    side_effect=RuntimeError("apiserver timeout")
+                )
+            else:
+                collector.collect = AsyncMock(
+                    return_value=RawBlob(data={}, source=f"{name}_{resource_type}")
+                )
+            return collector
+
+        def parse(blob):
+            if blob.source == "get_pods":
+                return [pod]
+            return []
+
+        mock_collector_registry.create.side_effect = create_collector
+        mock_parser_registry.parse.side_effect = parse
+
+        cmd = GraphCommand()
+        subject = SubjectCtx(
+            kind=ResourceKind.POD, name="test-pod", namespace="default"
+        )
+        result = await cmd.execute(subject)
+
+        assert result.exit_code == 0
+        assert "DATA GAPS" in result.output
+        assert "get secrets failed: apiserver timeout" in result.output
+        assert "get_secrets failed" not in result.output
+
+    @pytest.mark.asyncio
+    @patch("kubectl_smart.cli.commands.collector_registry")
+    @patch("kubectl_smart.cli.commands.parser_registry")
+    async def test_execute_surfaces_parser_data_gaps_by_resource_type(
+        self, mock_parser_registry, mock_collector_registry
+    ):
+        """Test graph labels parse failures by Kubernetes resource type."""
+        pod = ResourceRecord(
+            kind=ResourceKind.POD,
+            name="test-pod",
+            uid="pod-uid-123",
+            namespace="default",
+            status="Running",
+        )
+
+        def create_collector(name, **kwargs):
+            resource_type = kwargs.get("resource_type", "generic")
+            collector = MagicMock()
+            collector.name = f"{name}_{resource_type}"
+            collector.collect = AsyncMock(
+                return_value=RawBlob(data={}, source=f"{name}_{resource_type}")
+            )
+            return collector
+
+        def parse(blob):
+            if blob.source == "get_pods":
+                return [pod]
+            if blob.source == "get_services":
+                raise ValueError("malformed service list")
+            return []
+
+        mock_collector_registry.create.side_effect = create_collector
+        mock_parser_registry.parse.side_effect = parse
+
+        cmd = GraphCommand()
+        subject = SubjectCtx(
+            kind=ResourceKind.POD, name="test-pod", namespace="default"
+        )
+        result = await cmd.execute(subject)
+
+        assert result.exit_code == 0
+        assert "DATA GAPS" in result.output
+        assert "get services output could not be parsed: malformed service list" in result.output
+        assert "get_services output could not be parsed" not in result.output
+
 
 class TestTopCommand:
     """Tests for TopCommand class"""
