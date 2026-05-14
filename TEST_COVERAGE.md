@@ -4,8 +4,8 @@
 
 - Unit test command: `uv run --extra dev pytest`
 - Coverage command: `uv run --extra dev pytest --cov=kubectl_smart --cov-report=term-missing`
-- Latest local result: `483 passed`
-- Latest measured coverage: `85%`
+- Latest local result: `487 passed`
+- Latest measured coverage: `86%`
 
 Coverage is measured, not estimated. The default `pytest` command does not enforce
 coverage so contributors get a clear functional signal first. Use the explicit
@@ -51,6 +51,7 @@ coverage command above when working on test depth.
   and predictive warnings render inspectable resource/action values
 - Terminal and batch-text evidence sanitizes ANSI/control sequences from logs,
   events, errors, and other Kubernetes strings before rendering
+- CLI text error paths sanitize ANSI/control sequences before writing stderr
 - JSON rendering contracts, including surfaced diagnostic issues, data gaps,
   per-resource batch completeness, and issue metadata/evidence completeness for
   automation, plus batch summaries

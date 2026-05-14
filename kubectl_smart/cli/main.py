@@ -134,6 +134,13 @@ def _resolve_context(context: Optional[str]) -> Optional[str]:
     return os.getenv("KUBECTL_SMART_CONTEXT") or None
 
 
+def _terminal_plain_text(value: object) -> str:
+    """Render CLI text without terminal control effects."""
+    from ..renderers.terminal import terminal_plain_text
+
+    return terminal_plain_text(value)
+
+
 def _echo_command_error(
     message: str,
     output: str = "text",
@@ -153,7 +160,7 @@ def _echo_command_error(
                 err=True,
             )
         else:
-            typer.echo(f"Error: {message}", err=True)
+            typer.echo(f"Error: {_terminal_plain_text(message)}", err=True)
 
 
 
@@ -232,7 +239,11 @@ def diag(
     """
     # Validate inputs
     if output not in ('text', 'json'):
-        typer.echo(f"Error: Invalid output format '{output}'. Valid options: text, json", err=True)
+        output_name = _terminal_plain_text(output)
+        typer.echo(
+            f"Error: Invalid output format '{output_name}'. Valid options: text, json",
+            err=True,
+        )
         raise typer.Exit(2)
     if watch and output == "json":
         _echo_command_error("Watch mode currently supports text output only", output)
@@ -468,7 +479,7 @@ def diag(
     except Exception as e:
         import os
         if os.getenv('KUBECTL_SMART_DEBUG'):
-            typer.echo(f"Debug: Exception caught: {e}", err=True)
+            typer.echo(f"Debug: Exception caught: {_terminal_plain_text(e)}", err=True)
         _echo_command_error(str(e), output, data_gaps=command.data_gaps)
         raise typer.Exit(2)
 
@@ -501,7 +512,7 @@ def graph(
       kubectl-smart graph deploy my-app --downstream --timeout 3
     """
     if timeout is not None and timeout <= 0:
-        typer.echo("Error: --timeout must be greater than 0 seconds", err=True)
+        _echo_command_error("--timeout must be greater than 0 seconds")
         raise typer.Exit(2)
 
     try:
@@ -511,7 +522,7 @@ def graph(
         _validate_context(context)
         _validate_timeout(timeout)
     except typer.BadParameter as e:
-        typer.echo(f"Error: {e}", err=True)
+        _echo_command_error(str(e))
         raise typer.Exit(2)
     
     # Default to downstream if neither specified
@@ -567,8 +578,8 @@ def graph(
     except Exception as e:
         import os
         if os.getenv('KUBECTL_SMART_DEBUG'):
-            typer.echo(f"Debug: Exception caught: {e}", err=True)
-        typer.echo(f"Error: {e}", err=True)
+            typer.echo(f"Debug: Exception caught: {_terminal_plain_text(e)}", err=True)
+        _echo_command_error(str(e))
         raise typer.Exit(2)
 
 
@@ -597,7 +608,7 @@ def top(
       kubectl-smart top production --timeout 3
     """
     if timeout is not None and timeout <= 0:
-        typer.echo("Error: --timeout must be greater than 0 seconds", err=True)
+        _echo_command_error("--timeout must be greater than 0 seconds")
         raise typer.Exit(2)
 
     try:
@@ -606,7 +617,7 @@ def top(
         _validate_context(context)
         _validate_timeout(timeout)
     except typer.BadParameter as e:
-        typer.echo(f"Error: {e}", err=True)
+        _echo_command_error(str(e))
         raise typer.Exit(2)
     
     # Lazy import models
@@ -639,8 +650,8 @@ def top(
     except Exception as e:
         import os
         if os.getenv('KUBECTL_SMART_DEBUG'):
-            typer.echo(f"Debug: Exception caught: {e}", err=True)
-        typer.echo(f"Error: {e}", err=True)
+            typer.echo(f"Debug: Exception caught: {_terminal_plain_text(e)}", err=True)
+        _echo_command_error(str(e))
         raise typer.Exit(2)
 
 

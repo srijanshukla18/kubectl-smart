@@ -142,6 +142,28 @@ class TestDiagCommand:
         result = runner.invoke(app, ["diag", "invalid", "test"])
         assert result.exit_code != 0
 
+    @patch("kubectl_smart.cli.commands.DiagCommand.execute")
+    def test_diag_text_error_sanitizes_control_sequences(self, mock_execute):
+        """Test diag command errors cannot emit terminal control sequences."""
+        mock_execute.side_effect = RuntimeError("boom \x1b[31mred\x1b[0m\rnow")
+
+        result = runner.invoke(app, ["diag", "pod", "test-pod"])
+
+        assert result.exit_code == 2
+        assert "\x1b" not in result.stderr
+        assert "Error: boom red\\rnow" in result.stderr
+
+    def test_diag_invalid_output_sanitizes_control_sequences(self):
+        """Test invalid output-format errors sanitize the user value."""
+        result = runner.invoke(
+            app,
+            ["diag", "pod", "test-pod", "-o", "bad\x1b[31mred\x1b[0m"],
+        )
+
+        assert result.exit_code == 2
+        assert "\x1b" not in result.stderr
+        assert "Invalid output format 'badred'" in result.stderr
+
     def test_diag_json_missing_name_error_stays_json(self):
         """Test early JSON diag validation errors stay JSON."""
         result = runner.invoke(app, ["diag", "pod", "-o", "json"])
@@ -824,6 +846,17 @@ class TestGraphCommand:
         assert result.exit_code == 2
         assert "--timeout must be greater than 0 seconds" in result.stderr
 
+    @patch("kubectl_smart.cli.commands.GraphCommand.execute")
+    def test_graph_error_sanitizes_control_sequences(self, mock_execute):
+        """Test graph command errors cannot emit terminal control sequences."""
+        mock_execute.side_effect = RuntimeError("boom \x1b[31mred\x1b[0m\rnow")
+
+        result = runner.invoke(app, ["graph", "pod", "api"])
+
+        assert result.exit_code == 2
+        assert "\x1b" not in result.stderr
+        assert "Error: boom red\\rnow" in result.stderr
+
 
 class TestTopCommand:
     """Tests for top command"""
@@ -914,6 +947,17 @@ class TestTopCommand:
 
         assert result.exit_code == 2
         assert "--timeout must be greater than 0 seconds" in result.stderr
+
+    @patch("kubectl_smart.cli.commands.TopCommand.execute")
+    def test_top_error_sanitizes_control_sequences(self, mock_execute):
+        """Test top command errors cannot emit terminal control sequences."""
+        mock_execute.side_effect = RuntimeError("boom \x1b[31mred\x1b[0m\rnow")
+
+        result = runner.invoke(app, ["top", "production"])
+
+        assert result.exit_code == 2
+        assert "\x1b" not in result.stderr
+        assert "Error: boom red\\rnow" in result.stderr
 
 
 class TestLegacyCommands:
