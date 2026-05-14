@@ -286,3 +286,5 @@ Help improve kubectl-smart by trying it out and sharing your experience!
 
 - **`README.md`**: Project overview and quick start
 - **`examples.md`**: Comprehensive usage examples and scenarios
+- **`SEV1_READINESS_AUDIT.md`**: Current evidence checklist, gates, and residual
+  risks for real-incident trust
