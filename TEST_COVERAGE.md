@@ -4,8 +4,10 @@
 
 - Unit test command: `uv run --extra dev pytest`
 - Coverage command: `uv run --extra dev pytest --cov=kubectl_smart --cov-report=term-missing`
+- Local integration command: `KUBECTL_SMART_CONTEXT=kind-kubectl-smart-demo KUBECTL_SMART_CMD=./kubectl-smart ./test.sh`
 - Latest local result: `502 passed`
 - Latest measured coverage: `87%`
+- Latest local integration result: `54 passed, 0 failed`
 
 Coverage is measured, not estimated. The default `pytest` command does not enforce
 coverage so contributors get a clear functional signal first. Use the explicit
