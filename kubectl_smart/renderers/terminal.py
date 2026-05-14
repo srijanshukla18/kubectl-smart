@@ -24,6 +24,10 @@ from ..models import (
 )
 
 
+def terminal_plain_text(value: object) -> str:
+    """Return Kubernetes text without terminal control effects."""
+    escaped_controls = escape_control_codes(str(value))
+    return "\n".join(text.plain for text in AnsiDecoder().decode(escaped_controls))
 
 
 
@@ -44,15 +48,10 @@ class TerminalRenderer:
             legacy_windows=False
         )
         self.colors_enabled = colors_enabled
-        self._ansi_decoder = AnsiDecoder()
 
     def _display_text(self, value: object) -> str:
         """Return text safe to interpolate in Rich markup strings."""
-        escaped_controls = escape_control_codes(str(value))
-        plain = "\n".join(
-            text.plain for text in self._ansi_decoder.decode(escaped_controls)
-        )
-        return escape(plain)
+        return escape(terminal_plain_text(value))
     
     def render_diagnosis(self, result: DiagnosisResult) -> str:
         """Render diagnosis result as specified in product requirements

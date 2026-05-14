@@ -381,6 +381,63 @@ class TestDiagCommand:
         assert "Failed: 0 | Not found: 0 | Data gaps: 1 | Concurrency: 5" in result.stdout
         assert "test-pod: Running | ⚪ incomplete analysis | data gaps: 1" in result.stdout
 
+    @patch("kubectl_smart.batch.BatchAnalyzer.diagnose_all")
+    def test_diag_all_text_output_sanitizes_control_sequences(self, mock_diagnose_all):
+        """Test batch text rows cannot emit terminal control sequences."""
+        from kubectl_smart.batch import BatchResult
+        from kubectl_smart.models import (
+            DiagnosisResult,
+            Issue,
+            IssueSeverity,
+            ResourceKind,
+            ResourceRecord,
+            SubjectCtx,
+        )
+
+        subject = SubjectCtx(
+            kind=ResourceKind.POD,
+            name="test-pod",
+            namespace="default",
+        )
+        resource = ResourceRecord(
+            kind=ResourceKind.POD,
+            name="test-pod",
+            uid="pod-uid",
+            namespace="default",
+            status="Running\x1b[31mred\x1b[0m",
+        )
+        issue = Issue(
+            resource_uid="pod-uid",
+            title="Log \x1b[31mErrors\x1b[0m\rInjected",
+            description="Log errors",
+            severity=IssueSeverity.CRITICAL,
+            score=95,
+            reason="LogFailure",
+            message="panic",
+            evidence=["Log line: panic"],
+        )
+        mock_diagnose_all.return_value = BatchResult(
+            total_resources=1,
+            successful=1,
+            failed=0,
+            results=[
+                DiagnosisResult(
+                    subject=subject,
+                    resource=resource,
+                    root_cause=issue,
+                    analysis_duration=0.1,
+                )
+            ],
+            duration=0.1,
+        )
+
+        result = runner.invoke(app, ["diag", "pod", "--all", "-n", "default"])
+
+        assert result.exit_code == 2
+        assert "\x1b" not in result.stdout
+        assert "Runningred" in result.stdout
+        assert "Log Errors\\rInjected" in result.stdout
+
     @patch("kubectl_smart.batch.BatchAnalyzer")
     def test_diag_all_passes_max_concurrent(self, mock_batch_analyzer):
         """Test --max-concurrent is passed to batch analysis."""

@@ -327,6 +327,8 @@ def diag(
                 ))
             else:
                 # Text output for batch
+                from ..renderers.terminal import terminal_plain_text
+
                 typer.echo(f"\n📋 BATCH DIAGNOSIS: {kubectl_resource_type(kind)}")
                 if namespace:
                     typer.echo(f"Namespace: {namespace}")
@@ -345,7 +347,11 @@ def diag(
                 typer.echo("=" * 60)
 
                 for result in batch_result.results:
-                    status = result.resource.status if result.resource else "Unknown"
+                    status = (
+                        terminal_plain_text(result.resource.status)
+                        if result.resource
+                        else "Unknown"
+                    )
                     issues_str = ""
                     if result.resource is None:
                         issues_str = "❌ not found"
@@ -360,14 +366,16 @@ def diag(
 
                     root_cause_str = ""
                     if result.root_cause:
-                        root_cause_str = f" - {result.root_cause.title}"
+                        root_cause_str = (
+                            f" - {terminal_plain_text(result.root_cause.title)}"
+                        )
 
                     gap_str = ""
                     if result.data_gaps:
                         gap_str = f" | data gaps: {len(result.data_gaps)}"
 
                     typer.echo(
-                        f"  {result.subject.name}: {status} | "
+                        f"  {terminal_plain_text(result.subject.name)}: {status} | "
                         f"{issues_str}{root_cause_str}{gap_str}"
                     )
 
@@ -375,16 +383,20 @@ def diag(
                     typer.echo(f"\n⚠️  Errors ({len(batch_result.errors)}):")
                     for error in batch_result.errors[:5]:
                         if error.get("message"):
-                            typer.echo(f"  - {error.get('message')}")
+                            typer.echo(f"  - {terminal_plain_text(error.get('message'))}")
                         else:
-                            resource = error.get("resource", "<unknown>")
-                            detail = error.get("error", "<unknown>")
+                            resource = terminal_plain_text(
+                                error.get("resource", "<unknown>")
+                            )
+                            detail = terminal_plain_text(error.get("error", "<unknown>"))
                             typer.echo(f"  - {resource}: {detail}")
 
                 if batch_result.messages:
                     typer.echo(f"\nℹ️  Notes ({len(batch_result.messages)}):")
                     for message in batch_result.messages[:5]:
-                        typer.echo(f"  - {message.get('message', '<unknown>')}")
+                        typer.echo(
+                            f"  - {terminal_plain_text(message.get('message', '<unknown>'))}"
+                        )
 
                 typer.echo(f"\n⏱️  Completed in {batch_result.duration:.2f}s")
 
