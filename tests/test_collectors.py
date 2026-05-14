@@ -171,6 +171,25 @@ class TestCollectorBase:
             "kubectl auth can-i get nodes.metrics.k8s.io"
         )
 
+    def test_create_failure_blob_records_metrics_not_ready_check(self):
+        """Test warming metrics-server gaps suggest waiting or checking readiness."""
+        collector = MetricsServer()
+        subject = SubjectCtx(kind=ResourceKind.NAMESPACE, name="default")
+        blob = collector._create_failure_blob(
+            {},
+            "text/plain",
+            KubectlError("error: metrics not available yet"),
+            subject,
+            operation="metrics",
+            resource_type="pods",
+        )
+
+        assert blob.metadata["category"] == "unavailable"
+        assert blob.metadata["suggested_action"] == (
+            "Wait for metrics-server to scrape this workload or "
+            "check metrics-server readiness"
+        )
+
 
 class TestKubectlGet:
     """Tests for KubectlGet collector"""

@@ -312,6 +312,11 @@ class Collector(ABC):
             return "Container has not started; rely on events and describe output"
         if operation == "metrics" and "metrics api not available" in error_lower:
             return "Install or enable metrics-server for capacity forecasting"
+        if operation == "metrics" and "metrics not available yet" in error_lower:
+            return (
+                "Wait for metrics-server to scrape this workload or "
+                "check metrics-server readiness"
+            )
         if category != "rbac":
             return None
 

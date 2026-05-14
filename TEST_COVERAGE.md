@@ -7,7 +7,7 @@
 - Local integration command: `KUBECTL_SMART_CONTEXT=kind-kubectl-smart-demo KUBECTL_SMART_CMD=./kubectl-smart ./test.sh`
 - Live metrics command: `KUBECTL_SMART_CMD=./kubectl-smart ./metrics-live-smoke.sh`
 - Provider compatibility command: `KUBECTL_SMART_CONTEXT=kind-kubectl-smart-demo NAMESPACE=kube-system KUBECTL_SMART_CMD=./kubectl-smart ./provider-compat-smoke.sh`
-- Latest local result: `517 passed`
+- Latest local result: `518 passed`
 - Latest measured coverage: `88%`
 - Latest local integration result: `54 passed, 0 failed`
 - Latest live metrics result: passed against a throwaway kind cluster
@@ -33,6 +33,8 @@ coverage command above when working on test depth.
 - Kubelet node-proxy scrape failures surfaced as capacity data gaps
 - Metrics-server RBAC data gaps suggest pod-vs-node specific
   `metrics.k8s.io` permission checks
+- Metrics-server warmup gaps suggest waiting for a scrape or checking
+  metrics-server readiness instead of implying metrics-server is absent
 - Graph relationship extraction and traversal
 - Graph not-found messaging distinguishes incomplete target inventory from
   confirmed absence in a complete graph collection
