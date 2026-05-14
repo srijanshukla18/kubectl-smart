@@ -85,10 +85,10 @@ class TerminalRenderer:
             if result.recent_events:
                 console.print("\n📅 RECENT EVENTS")
                 table = Table(show_header=True, header_style="bold magenta", box=None)
-                table.add_column("Time", style="cyan")
-                table.add_column("Type", style="white")
-                table.add_column("Reason", style="yellow")
-                table.add_column("Message", style="white")
+                table.add_column("Time", style="cyan", overflow="fold")
+                table.add_column("Type", style="white", overflow="fold")
+                table.add_column("Reason", style="yellow", overflow="fold")
+                table.add_column("Message", style="white", overflow="fold")
                 
                 for event in result.recent_events:
                     ts = str(
@@ -174,44 +174,34 @@ class TerminalRenderer:
             # Capacity warnings
             if result.capacity_warnings:
                 console.print(f"\n⚠️  CAPACITY WARNINGS ({len(result.capacity_warnings)})")
-                table = Table(show_header=True, header_style="bold magenta")
-                table.add_column("Resource", style="cyan")
-                table.add_column("Type", style="white")
-                table.add_column("Current", style="yellow") 
-                table.add_column("Predicted", style="red")
-                table.add_column("Action", style="green")
-                
                 for warning in result.capacity_warnings:
-                    table.add_row(
-                        escape(str(warning.get('resource', 'Unknown'))),
-                        escape(str(warning.get('type', 'Unknown'))),
-                        f"{warning.get('current_utilization', 0):.1f}%",
-                        f"{warning.get('predicted_utilization', 0):.1f}%",
-                        escape(str(warning.get('suggested_action', 'Monitor'))),
+                    resource = escape(str(warning.get('resource', 'Unknown')))
+                    warning_type = escape(str(warning.get('type', 'Unknown')))
+                    action = escape(str(warning.get('suggested_action', 'Monitor')))
+                    current = f"{warning.get('current_utilization', 0):.1f}%"
+                    predicted = f"{warning.get('predicted_utilization', 0):.1f}%"
+                    console.print(f"  • [cyan]{resource}[/cyan]")
+                    console.print(
+                        f"    Type: {warning_type} | Current: [yellow]{current}[/yellow] | "
+                        f"Predicted: [red]{predicted}[/red]"
                     )
-                
-                console.print(table)
+                    console.print(f"    Action: [green]{action}[/green]")
             
             # Certificate warnings
             if result.certificate_warnings:
                 console.print(f"\n🔒 CERTIFICATE WARNINGS ({len(result.certificate_warnings)})")
-                table = Table(show_header=True, header_style="bold magenta")
-                table.add_column("Resource", style="cyan")
-                table.add_column("Type", style="white")
-                table.add_column("Expires", style="red")
-                table.add_column("Days Left", style="yellow")
-                table.add_column("Action", style="green")
-                
                 for warning in result.certificate_warnings:
-                    table.add_row(
-                        escape(str(warning.get('resource', 'Unknown'))),
-                        escape(str(warning.get('certificate_type', 'Unknown'))),
-                        escape(str(warning.get('expiry_date', 'Unknown'))),
-                        str(warning.get('days_until_expiry', 0)),
-                        escape(str(warning.get('suggested_action', 'Renew'))),
+                    resource = escape(str(warning.get('resource', 'Unknown')))
+                    cert_type = escape(str(warning.get('certificate_type', 'Unknown')))
+                    expiry = escape(str(warning.get('expiry_date', 'Unknown')))
+                    days_left = str(warning.get('days_until_expiry', 0))
+                    action = escape(str(warning.get('suggested_action', 'Renew')))
+                    console.print(f"  • [cyan]{resource}[/cyan]")
+                    console.print(
+                        f"    Type: {cert_type} | Expires: [red]{expiry}[/red] | "
+                        f"Days left: [yellow]{days_left}[/yellow]"
                     )
-                
-                console.print(table)
+                    console.print(f"    Action: [green]{action}[/green]")
             
             # If no warnings, print honesty hints when data sources might be missing
             if not result.capacity_warnings and not result.certificate_warnings:

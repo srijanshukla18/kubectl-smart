@@ -332,6 +332,39 @@ class TestRenderDiagnosis:
         assert "Failed[red]Reason[/red]" in output
         assert "before [yellow]message[/yellow] after" in output
 
+    def test_render_diagnosis_folds_recent_events_without_ellipsis(
+        self, sample_subject_ctx, sample_resource_record
+    ):
+        """Test recent events preserve full messages in narrow terminals."""
+        renderer = TerminalRenderer(colors_enabled=False, width=72)
+        event = ResourceRecord(
+            kind=ResourceKind.EVENT,
+            name="test-event",
+            uid="event-uid",
+            namespace="default",
+            properties={
+                "lastTimestamp": "2026-05-14T10:11:12Z",
+                "type": "Warning",
+                "reason": "BackOff",
+                "message": (
+                    "Back-off restarting failed container api in pod "
+                    "checkout-api-0_kubectl-smart-complex"
+                ),
+            },
+        )
+        result = DiagnosisResult(
+            subject=sample_subject_ctx,
+            resource=sample_resource_record,
+            recent_events=[event],
+            analysis_duration=1.0,
+        )
+
+        output = renderer.render_diagnosis(result)
+
+        assert "…" not in output
+        assert "checkout-api-0" in output
+        assert "kubectl-smart-complex" in output
+
     def test_render_diagnosis_resource_not_found(self, sample_subject_ctx):
         """Test diagnosis rendering when resource not found"""
         renderer = TerminalRenderer(colors_enabled=False)
@@ -489,7 +522,7 @@ class TestRenderTop:
         assert "95.0%" in output
 
     def test_render_top_escapes_capacity_warning_markup(self, sample_subject_ctx):
-        """Test capacity warning table values are rendered literally."""
+        """Test capacity warning values are rendered literally."""
         renderer = TerminalRenderer(colors_enabled=False, width=180)
         result = TopResult(
             subject=sample_subject_ctx,
@@ -536,7 +569,7 @@ class TestRenderTop:
         assert "10" in output
 
     def test_render_top_escapes_certificate_warning_markup(self, sample_subject_ctx):
-        """Test certificate warning table values are rendered literally."""
+        """Test certificate warning values are rendered literally."""
         renderer = TerminalRenderer(colors_enabled=False, width=200)
         result = TopResult(
             subject=sample_subject_ctx,
@@ -559,6 +592,30 @@ class TestRenderTop:
         assert "tls_[yellow]secret[/yellow]" in output
         assert "2026-[blue]05[/blue]-15" in output
         assert "Renew [green]certificate[/green]" in output
+
+    def test_render_top_shows_warning_values_without_ellipsis(self, sample_subject_ctx):
+        """Test top warnings preserve inspectable resource identifiers."""
+        renderer = TerminalRenderer(colors_enabled=False, width=100)
+        result = TopResult(
+            subject=sample_subject_ctx,
+            certificate_warnings=[
+                {
+                    "resource": "Secret/kubectl-smart-complex/checkout-demo-tls",
+                    "certificate_type": "tls_secret",
+                    "expiry_date": "2026-05-16T18:30:00Z",
+                    "days_until_expiry": 2,
+                    "suggested_action": "Renew certificate for secret checkout-demo-tls",
+                }
+            ],
+            forecast_horizon_hours=72,
+            analysis_duration=1.0,
+        )
+
+        output = renderer.render_top(result)
+
+        assert "…" not in output
+        assert "checkout-demo-tls" in output
+        assert "2026-05-16" in output
 
     def test_render_top_no_warnings_with_data_gaps_is_qualified(
         self, sample_subject_ctx
