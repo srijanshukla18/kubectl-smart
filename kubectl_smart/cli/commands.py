@@ -193,25 +193,69 @@ class DiagCommand(BaseCommand):
                 all_resources = self._dedupe_resources(all_resources)
 
         if subject.kind == ResourceKind.SERVICE:
-            endpoints_collector = self._create_collector('get', resource_type='endpoints')
-            endpoints_blob = await endpoints_collector.collect(subject)
-            self._record_blob_gap(endpoints_blob)
-            try:
-                all_resources.extend(parser_registry.parse(endpoints_blob))
-            except Exception as e:
-                logger.warning("Failed to parse service endpoint data", error=str(e))
-                self._add_data_gap(f"endpoints output could not be parsed: {str(e).splitlines()[0]}")
-
-            pods_collector = self._create_collector('get', resource_type='pods')
-            pods_blob = await pods_collector.collect(subject.model_copy(update={"name": ""}))
-            self._record_blob_gap(pods_blob)
-            try:
-                all_resources.extend(parser_registry.parse(pods_blob))
-            except Exception as e:
-                logger.warning("Failed to parse service pod data", error=str(e))
-                self._add_data_gap(f"pods output could not be parsed: {str(e).splitlines()[0]}")
+            all_resources.extend(await self._collect_service_context(subject))
 
         return all_resources
+
+    async def _collect_service_context(self, subject: SubjectCtx) -> List[ResourceRecord]:
+        """Collect endpoint and namespace pod context for Service diagnosis."""
+        collector_specs = [
+            ("endpoints", subject),
+            ("pods", subject.model_copy(update={"name": ""})),
+        ]
+        collectors = []
+
+        for resource_type, collector_subject in collector_specs:
+            try:
+                collector = self._create_collector("get", resource_type=resource_type)
+                collectors.append((resource_type, collector, collector_subject))
+            except Exception as e:
+                logger.warning(
+                    "Failed to create service context collector",
+                    resource_type=resource_type,
+                    error=str(e),
+                )
+                self._record_collector_creation_gap("get", e, resource_type)
+
+        if not collectors:
+            return []
+
+        blobs = await asyncio.gather(
+            *[
+                collector.collect(collector_subject)
+                for _, collector, collector_subject in collectors
+            ],
+            return_exceptions=True,
+        )
+
+        resources: List[ResourceRecord] = []
+        for (resource_type, collector, _), blob in zip(collectors, blobs):
+            collector_label = f"get {resource_type}"
+            if isinstance(blob, Exception):
+                logger.warning(
+                    "Service context collector failed",
+                    collector=collector.name,
+                    resource_type=resource_type,
+                    error=str(blob),
+                )
+                self._record_exception_gap(collector_label, blob)
+                continue
+
+            self._record_blob_gap(blob)
+            try:
+                resources.extend(parser_registry.parse(blob))
+            except Exception as e:
+                logger.warning(
+                    "Failed to parse service context",
+                    collector=collector.name,
+                    resource_type=resource_type,
+                    error=str(e),
+                )
+                self._add_data_gap(
+                    f"{collector_label} output could not be parsed: {str(e).splitlines()[0]}"
+                )
+
+        return resources
 
     def _is_controller_kind(self, kind: ResourceKind) -> bool:
         return kind in {

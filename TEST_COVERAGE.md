@@ -4,7 +4,7 @@
 
 - Unit test command: `uv run --extra dev pytest`
 - Coverage command: `uv run --extra dev pytest --cov=kubectl_smart --cov-report=term-missing`
-- Latest local result: `494 passed`
+- Latest local result: `497 passed`
 - Latest measured coverage: `86%`
 
 Coverage is measured, not estimated. The default `pytest` command does not enforce
@@ -31,6 +31,8 @@ coverage command above when working on test depth.
 - Controller diagnoses promote child Pod failures through ownerReference and
   selector relationships, with StatefulSet/DaemonSet/ReplicaSet readiness
   counters parsed into availability status
+- Service diagnosis keeps endpoint and namespace pod context collection failures
+  bounded as data gaps instead of failing the whole diagnosis
 - Scoring heuristics and custom weight loading
 - Log evidence target attribution from collector metadata through scoring
 - Forecasting primitives
@@ -95,7 +97,7 @@ coverage command above when working on test depth.
 ## Known Coverage Gaps
 
 - `kubectl_smart/watch.py` terminal refresh and some cancellation branches
-- Some graph/diagnosis command orchestration fallback branches
+- Some graph/controller diagnosis command orchestration fallback branches
 - Integration-heavy collector behavior that depends on live Kubernetes API
   availability, metrics-server, kubelet proxy access, and RBAC envelopes
 

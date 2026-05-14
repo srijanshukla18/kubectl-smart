@@ -587,6 +587,151 @@ class TestDiagCommand:
     @pytest.mark.asyncio
     @patch("kubectl_smart.cli.commands.collector_registry")
     @patch("kubectl_smart.cli.commands.parser_registry")
+    async def test_execute_service_context_collect_failure_is_data_gap(
+        self, mock_parser_registry, mock_collector_registry
+    ):
+        """Test Service diag survives endpoint collection failures."""
+        service = ResourceRecord(
+            kind=ResourceKind.SERVICE,
+            name="inventory",
+            uid="svc-uid",
+            namespace="default",
+            status="Active",
+            properties={"spec": {"selector": {"app": "inventory"}}},
+        )
+
+        def create_collector(name, **kwargs):
+            resource_type = kwargs.get("resource_type", name)
+            collector = MagicMock()
+            collector.name = f"{name}_{resource_type}"
+            if resource_type == "endpoints":
+                collector.collect = AsyncMock(
+                    side_effect=RuntimeError("apiserver timeout")
+                )
+            else:
+                collector.collect = AsyncMock(
+                    return_value=RawBlob(data={}, source=f"{name}_{resource_type}")
+                )
+            return collector
+
+        def parse(blob):
+            if blob.source == "get_service":
+                return [service]
+            return []
+
+        mock_collector_registry.create.side_effect = create_collector
+        mock_parser_registry.parse.side_effect = parse
+
+        cmd = DiagCommand()
+        subject = SubjectCtx(
+            kind=ResourceKind.SERVICE, name="inventory", namespace="default"
+        )
+        result = await cmd.execute(subject)
+
+        assert result.exit_code == 0
+        assert "DIAGNOSIS" in result.output
+        assert "DATA GAPS" in result.output
+        assert "get endpoints failed: apiserver timeout" in result.output
+        assert "Diagnosis failed" not in result.output
+
+    @pytest.mark.asyncio
+    @patch("kubectl_smart.cli.commands.collector_registry")
+    @patch("kubectl_smart.cli.commands.parser_registry")
+    async def test_execute_raw_service_context_parse_failure_is_data_gap(
+        self, mock_parser_registry, mock_collector_registry
+    ):
+        """Test malformed Service context keeps raw diagnosis incomplete."""
+        service = ResourceRecord(
+            kind=ResourceKind.SERVICE,
+            name="inventory",
+            uid="svc-uid",
+            namespace="default",
+            status="Active",
+            properties={"spec": {"selector": {"app": "inventory"}}},
+        )
+
+        def create_collector(name, **kwargs):
+            resource_type = kwargs.get("resource_type", name)
+            collector = MagicMock()
+            collector.name = f"{name}_{resource_type}"
+            collector.collect = AsyncMock(
+                return_value=RawBlob(data={}, source=f"{name}_{resource_type}")
+            )
+            return collector
+
+        def parse(blob):
+            if blob.source == "get_service":
+                return [service]
+            if blob.source == "get_pods":
+                raise ValueError("malformed pod list")
+            return []
+
+        mock_collector_registry.create.side_effect = create_collector
+        mock_parser_registry.parse.side_effect = parse
+
+        cmd = DiagCommand()
+        subject = SubjectCtx(
+            kind=ResourceKind.SERVICE, name="inventory", namespace="default"
+        )
+        result = await cmd.execute_raw(subject)
+
+        assert result.exit_code == 0
+        assert result.resource == service
+        assert result.data_gaps == [
+            "get pods output could not be parsed: malformed pod list"
+        ]
+
+    @pytest.mark.asyncio
+    @patch("kubectl_smart.cli.commands.collector_registry")
+    @patch("kubectl_smart.cli.commands.parser_registry")
+    async def test_execute_raw_service_context_creation_failure_is_data_gap(
+        self, mock_parser_registry, mock_collector_registry
+    ):
+        """Test Service context collector creation failures remain bounded."""
+        service = ResourceRecord(
+            kind=ResourceKind.SERVICE,
+            name="inventory",
+            uid="svc-uid",
+            namespace="default",
+            status="Active",
+            properties={"spec": {"selector": {"app": "inventory"}}},
+        )
+
+        def create_collector(name, **kwargs):
+            resource_type = kwargs.get("resource_type", name)
+            if resource_type in {"endpoints", "pods"}:
+                raise RuntimeError(f"{resource_type} registry unavailable")
+            collector = MagicMock()
+            collector.name = f"{name}_{resource_type}"
+            collector.collect = AsyncMock(
+                return_value=RawBlob(data={}, source=f"{name}_{resource_type}")
+            )
+            return collector
+
+        def parse(blob):
+            if blob.source == "get_service":
+                return [service]
+            return []
+
+        mock_collector_registry.create.side_effect = create_collector
+        mock_parser_registry.parse.side_effect = parse
+
+        cmd = DiagCommand()
+        subject = SubjectCtx(
+            kind=ResourceKind.SERVICE, name="inventory", namespace="default"
+        )
+        result = await cmd.execute_raw(subject)
+
+        assert result.exit_code == 0
+        assert result.resource == service
+        assert result.data_gaps == [
+            "get endpoints collector unavailable: endpoints registry unavailable",
+            "get pods collector unavailable: pods registry unavailable",
+        ]
+
+    @pytest.mark.asyncio
+    @patch("kubectl_smart.cli.commands.collector_registry")
+    @patch("kubectl_smart.cli.commands.parser_registry")
     async def test_execute_raw_deployment_promotes_child_pod_issue(
         self, mock_parser_registry, mock_collector_registry
     ):
