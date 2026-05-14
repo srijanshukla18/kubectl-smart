@@ -68,6 +68,38 @@ class TestRenderDiagnosis:
         assert "LIKELY ROOT CAUSE" in output
         assert sample_issue.title in output
 
+    def test_render_diagnosis_escapes_issue_markup(
+        self, sample_subject_ctx, sample_resource_record
+    ):
+        """Test issue evidence is rendered literally, not as Rich markup."""
+        renderer = TerminalRenderer(colors_enabled=False)
+        issue = Issue(
+            resource_uid=sample_resource_record.uid,
+            title="Log [red]Errors[/red]",
+            description="Saw [yellow]panic[/yellow]",
+            severity=IssueSeverity.CRITICAL,
+            score=95.0,
+            reason="LogFailure",
+            message="panic",
+            evidence=["Log line: [red]panic[/red]"],
+            suggested_actions=["Inspect [blue]logs[/blue]"],
+        )
+        result = DiagnosisResult(
+            subject=sample_subject_ctx,
+            resource=sample_resource_record,
+            root_cause=issue,
+            suggested_actions=["Run [green]kubectl logs[/green]"],
+            analysis_duration=1.0,
+        )
+
+        output = renderer.render_diagnosis(result)
+
+        assert "[red]Errors[/red]" in output
+        assert "[yellow]panic[/yellow]" in output
+        assert "[red]panic[/red]" in output
+        assert "[blue]logs[/blue]" in output
+        assert "[green]kubectl logs[/green]" in output
+
     def test_render_diagnosis_root_cause_only_is_nonzero(
         self, sample_subject_ctx, sample_resource_record, sample_issue
     ):

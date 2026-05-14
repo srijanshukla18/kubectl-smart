@@ -76,8 +76,8 @@ class TerminalRenderer:
             if result.contributing_factors:
                 console.print(f"\n⚠️  CONTRIBUTING FACTORS ({len(result.contributing_factors)})")
                 for i, factor in enumerate(result.contributing_factors, 1):
-                    console.print(f"  {i}. {factor.title} (score: {factor.score:.1f})")
-                    console.print(f"     {factor.description}")
+                    console.print(f"  {i}. {escape(factor.title)} (score: {factor.score:.1f})")
+                    console.print(f"     {escape(factor.description)}")
                     self._render_issue_evidence(console, factor, indent="     ")
 
             # Recent Events - New Section
@@ -108,7 +108,7 @@ class TerminalRenderer:
             if result.suggested_actions:
                 console.print("\n💡 SUGGESTED ACTIONS")
                 for i, action in enumerate(result.suggested_actions, 1):
-                    console.print(f"  {i}. {action}")
+                    console.print(f"  {i}. {escape(action)}")
 
             self._render_data_gaps(console, result.data_gaps)
             
@@ -271,8 +271,8 @@ class TerminalRenderer:
         severity_style = self._get_severity_style(issue.severity)
         severity_icon = self._get_severity_icon(issue.severity)
         
-        console.print(f"  {severity_icon} [{severity_style}]{issue.title}[/{severity_style}] (score: {issue.score:.1f})")
-        console.print(f"    {issue.description}")
+        console.print(f"  {severity_icon} [{severity_style}]{escape(issue.title)}[/{severity_style}] (score: {issue.score:.1f})")
+        console.print(f"    {escape(issue.description)}")
         
         if issue.critical_path:
             console.print("    [red]🎯 On critical dependency path[/red]")
@@ -283,7 +283,7 @@ class TerminalRenderer:
         if show_details and issue.suggested_actions:
             console.print("    [dim]Suggested actions:[/dim]")
             for action in issue.suggested_actions[:3]:  # Limit to top 3
-                console.print(f"    [dim]• {action}[/dim]")
+                console.print(f"    [dim]• {escape(action)}[/dim]")
 
     def _render_issue_evidence(
         self,
@@ -294,7 +294,7 @@ class TerminalRenderer:
         if issue.evidence:
             console.print(f"{indent}[dim]Evidence:[/dim]")
             for evidence in issue.evidence[:5]:
-                console.print(f"{indent}[dim]• {evidence}[/dim]")
+                console.print(f"{indent}[dim]• {escape(evidence)}[/dim]")
         elif issue.severity in {
             IssueSeverity.CRITICAL,
             IssueSeverity.WARNING,
