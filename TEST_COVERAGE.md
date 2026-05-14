@@ -5,7 +5,7 @@
 - Unit test command: `uv run --extra dev pytest`
 - Coverage command: `uv run --extra dev pytest --cov=kubectl_smart --cov-report=term-missing`
 - Local integration command: `KUBECTL_SMART_CONTEXT=kind-kubectl-smart-demo KUBECTL_SMART_CMD=./kubectl-smart ./test.sh`
-- Latest local result: `504 passed`
+- Latest local result: `506 passed`
 - Latest measured coverage: `87%`
 - Latest local integration result: `54 passed, 0 failed`
 
@@ -102,10 +102,12 @@ coverage command above when working on test depth.
 - Watch mode records failed checks and recovery in the event stream/summary
 - Watch mode clean-stop and keyboard-interrupt paths return success, avoid
   unnecessary post-stop sleeping, and print a session summary
+- Watch mode cleans up and prints a summary on external asyncio cancellation
+  before propagating the cancellation
 
 ## Known Coverage Gaps
 
-- `kubectl_smart/watch.py` terminal refresh and some cancellation branches
+- `kubectl_smart/watch.py` terminal refresh and a few rare display branches
 - Some command exception and edge branches outside the main incident flows
 - Integration-heavy collector behavior that depends on live Kubernetes API
   availability, metrics-server, kubelet proxy access, and RBAC envelopes

@@ -112,6 +112,11 @@ class ResourceWatcher:
             self._print_summary()
             self.stop()
             return 0
+        except asyncio.CancelledError:
+            print("\n\n⏹️  Watch cancelled", flush=True)
+            self._print_summary()
+            self.stop()
+            raise
         except Exception as e:
             logger.error("Watch failed", error=terminal_plain_text(e))
             print(f"\n❌ Watch error: {terminal_plain_text(e)}", flush=True)

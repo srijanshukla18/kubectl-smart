@@ -1,5 +1,6 @@
 """Tests for kubectl_smart/watch.py."""
 
+import asyncio
 from datetime import datetime
 
 import pytest
@@ -409,3 +410,59 @@ async def test_watch_start_prints_summary_on_keyboard_interrupt(monkeypatch, cap
     assert "Watch stopped by user" in output
     assert "WATCH SUMMARY" in output
     assert watcher.running is False
+
+
+@pytest.mark.asyncio
+async def test_watch_start_cleans_up_on_task_cancellation(monkeypatch, capsys):
+    """External asyncio cancellation should stop the watch before propagating."""
+    subject = SubjectCtx(kind=ResourceKind.POD, name="api", namespace="default")
+    watcher = ResourceWatcher(subject, interval_seconds=30)
+
+    async def check_once(*_args, **_kwargs):
+        return None
+
+    async def cancel_sleep(seconds):
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(watcher, "_check_resource", check_once)
+    monkeypatch.setattr("kubectl_smart.watch.asyncio.sleep", cancel_sleep)
+
+    with pytest.raises(asyncio.CancelledError):
+        await watcher.start(renderer=object(), output_format="text")
+    output = capsys.readouterr().out
+
+    assert "Watch cancelled" in output
+    assert "WATCH SUMMARY" in output
+    assert "1 checks" in output
+    assert watcher.running is False
+
+
+def test_watch_summary_includes_event_breakdown(capsys):
+    """Watch summaries should show event counts for resumable incident notes."""
+    subject = SubjectCtx(kind=ResourceKind.POD, name="api", namespace="default")
+    watcher = ResourceWatcher(subject, interval_seconds=5)
+    watcher.iteration_count = 3
+    watcher.events = [
+        WatchEvent(
+            timestamp=datetime.now(),
+            event_type="check_failed",
+            resource=subject.full_name,
+        ),
+        WatchEvent(
+            timestamp=datetime.now(),
+            event_type="check_failed",
+            resource=subject.full_name,
+        ),
+        WatchEvent(
+            timestamp=datetime.now(),
+            event_type="check_recovered",
+            resource=subject.full_name,
+        ),
+    ]
+
+    watcher._print_summary()
+    output = capsys.readouterr().out
+
+    assert "Events detected: 3" in output
+    assert "check_failed: 2" in output
+    assert "check_recovered: 1" in output
