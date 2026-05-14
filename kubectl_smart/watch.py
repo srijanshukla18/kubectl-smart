@@ -104,6 +104,8 @@ class ResourceWatcher:
             while self.running:
                 await self._check_resource(renderer, output_format)
                 self.iteration_count += 1
+                if not self.running:
+                    break
                 await asyncio.sleep(self.interval_seconds)
         except KeyboardInterrupt:
             print("\n\n⏹️  Watch stopped by user", flush=True)
@@ -116,6 +118,7 @@ class ResourceWatcher:
             self.stop()
             return 2
 
+        self._print_summary()
         return 0
 
     def stop(self) -> None:
@@ -346,9 +349,9 @@ class ResourceWatcher:
 
         if hasattr(result, 'output'):
             # CommandResult
-            print(result.output, flush=True)
+            print(terminal_plain_text(result.output), flush=True)
         elif renderer:
-            print(renderer.render_diagnosis(result), flush=True)
+            print(terminal_plain_text(renderer.render_diagnosis(result)), flush=True)
 
     def _print_changes(self, changes: List[WatchEvent]) -> None:
         """Print detected changes"""

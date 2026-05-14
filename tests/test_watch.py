@@ -133,6 +133,22 @@ def test_watch_print_changes_sanitizes_control_sequences(capsys):
     assert "logs \\x1b[31mblocked\\x1b[0m\\a" in output
 
 
+def test_watch_initial_command_output_sanitizes_control_sequences(capsys):
+    """Legacy CommandResult output should be literal evidence, not terminal effects."""
+    subject = SubjectCtx(kind=ResourceKind.POD, name="api", namespace="default")
+    watcher = ResourceWatcher(subject)
+
+    watcher._print_initial_state(
+        CommandResult(output="rendered \x1b[31mred\x1b[0m\rnow", exit_code=1),
+        renderer=object(),
+        output_format="text",
+    )
+    output = capsys.readouterr().out
+
+    assert "\x1b" not in output
+    assert "rendered \\x1b[31mred\\x1b[0m\\rnow" in output
+
+
 @pytest.mark.asyncio
 async def test_check_resource_uses_raw_diagnosis_for_change_detection(
     monkeypatch,
@@ -343,4 +359,53 @@ async def test_watch_start_returns_error_code_for_fatal_loop_error(
     assert "\x1b" not in output
     assert "Monitoring Pod/default/api\\x1b[31mred\\x1b[0m" in output
     assert "Watch error: terminal \\x1b[31mrefresh\\x1b[0m failed\\rnow" in output
+    assert watcher.running is False
+
+
+@pytest.mark.asyncio
+async def test_watch_start_stops_cleanly_without_extra_sleep(monkeypatch, capsys):
+    """A clean stop during a check should exit immediately and print a summary."""
+    subject = SubjectCtx(kind=ResourceKind.POD, name="api", namespace="default")
+    watcher = ResourceWatcher(subject, interval_seconds=30)
+    calls = {"check": 0}
+    sleeps = []
+
+    async def check_once_then_stop(*_args, **_kwargs):
+        calls["check"] += 1
+        watcher.stop()
+
+    async def fake_sleep(seconds):
+        sleeps.append(seconds)
+
+    monkeypatch.setattr(watcher, "_check_resource", check_once_then_stop)
+    monkeypatch.setattr("kubectl_smart.watch.asyncio.sleep", fake_sleep)
+
+    exit_code = await watcher.start(renderer=object(), output_format="text")
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert calls["check"] == 1
+    assert sleeps == []
+    assert watcher.iteration_count == 1
+    assert "WATCH SUMMARY" in output
+    assert "1 checks" in output
+
+
+@pytest.mark.asyncio
+async def test_watch_start_prints_summary_on_keyboard_interrupt(monkeypatch, capsys):
+    """Ctrl+C-style interrupts should keep the existing graceful summary path."""
+    subject = SubjectCtx(kind=ResourceKind.POD, name="api", namespace="default")
+    watcher = ResourceWatcher(subject, interval_seconds=1)
+
+    async def interrupt(*_args, **_kwargs):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(watcher, "_check_resource", interrupt)
+
+    exit_code = await watcher.start(renderer=object(), output_format="text")
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "Watch stopped by user" in output
+    assert "WATCH SUMMARY" in output
     assert watcher.running is False

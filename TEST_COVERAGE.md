@@ -4,7 +4,7 @@
 
 - Unit test command: `uv run --extra dev pytest`
 - Coverage command: `uv run --extra dev pytest --cov=kubectl_smart --cov-report=term-missing`
-- Latest local result: `489 passed`
+- Latest local result: `492 passed`
 - Latest measured coverage: `86%`
 
 Coverage is measured, not estimated. The default `pytest` command does not enforce
@@ -86,11 +86,12 @@ coverage command above when working on test depth.
 - Terminal/watch identity headers and watch log fields escape ANSI/control
   sequences before display/logging
 - Watch mode records failed checks and recovery in the event stream/summary
+- Watch mode clean-stop and keyboard-interrupt paths return success, avoid
+  unnecessary post-stop sleeping, and print a session summary
 
 ## Known Coverage Gaps
 
-- `kubectl_smart/watch.py` long-running start/stop loop, terminal refresh, and
-  signal handling branches
+- `kubectl_smart/watch.py` terminal refresh and some cancellation branches
 - Some command orchestration fallbacks and optional collector paths
 - Integration-heavy collector behavior that depends on live Kubernetes API
   availability, metrics-server, kubelet proxy access, and RBAC envelopes
