@@ -1420,6 +1420,67 @@ class TestTopCommand:
     @pytest.mark.asyncio
     @patch("kubectl_smart.cli.commands.collector_registry")
     @patch("kubectl_smart.cli.commands.parser_registry")
+    async def test_execute_forecast_failure_preserves_data_gaps(
+        self, mock_parser_registry, mock_collector_registry
+    ):
+        """Test unexpected top failures keep already-collected data gaps."""
+        metrics_gap = RawBlob(
+            data={},
+            source="metrics_server",
+            content_type="text/plain",
+            metadata={
+                "data_gap": True,
+                "collector": "metrics_server",
+                "operation": "metrics",
+                "resource_type": "pods",
+                "category": "unavailable",
+                "error": "error: metrics not available yet",
+                "suggested_action": (
+                    "Wait for metrics-server to scrape this workload or "
+                    "check metrics-server readiness"
+                ),
+            },
+        )
+
+        def create_collector(name, **kwargs):
+            collector = MagicMock()
+            collector.name = f"{name}_{kwargs.get('resource_type', 'generic')}"
+            if name == "metrics":
+                collector.collect = AsyncMock(return_value=metrics_gap)
+            else:
+                collector.collect = AsyncMock(
+                    return_value=RawBlob(data={}, source=collector.name)
+                )
+            return collector
+
+        class FailingForecastingEngine:
+            def predict_capacity_issues(self, resources, metrics_data):
+                raise RuntimeError("forecast exploded")
+
+            def predict_certificate_expiry(
+                self, resources, secret_inventory_complete=True
+            ):
+                return []
+
+        mock_collector_registry.create.side_effect = create_collector
+        mock_parser_registry.parse.return_value = []
+
+        cmd = TopCommand()
+        cmd.forecasting_engine = FailingForecastingEngine()
+        subject = SubjectCtx(
+            kind=ResourceKind.NAMESPACE, name="default", namespace="default"
+        )
+        result = await cmd.execute(subject)
+
+        assert result.exit_code == 2
+        assert "Predictive analysis failed: forecast exploded" in result.output
+        assert "DATA GAPS" in result.output
+        assert "metrics pods unavailable (unavailable)" in result.output
+        assert "Wait for metrics-server to scrape this workload" in result.output
+
+    @pytest.mark.asyncio
+    @patch("kubectl_smart.cli.commands.collector_registry")
+    @patch("kubectl_smart.cli.commands.parser_registry")
     async def test_execute_with_warnings(
         self, mock_parser_registry, mock_collector_registry
     ):

@@ -7,7 +7,7 @@
 - Local integration command: `KUBECTL_SMART_CONTEXT=kind-kubectl-smart-demo KUBECTL_SMART_CMD=./kubectl-smart ./test.sh`
 - Live metrics command: `KUBECTL_SMART_CMD=./kubectl-smart ./metrics-live-smoke.sh`
 - Provider compatibility command: `KUBECTL_SMART_CONTEXT=kind-kubectl-smart-demo NAMESPACE=kube-system KUBECTL_SMART_CMD=./kubectl-smart ./provider-compat-smoke.sh`
-- Latest local result: `518 passed`
+- Latest local result: `519 passed`
 - Latest measured coverage: `88%`
 - Latest local integration result: `54 passed, 0 failed`
 - Latest live metrics result: passed against a throwaway kind cluster
@@ -97,6 +97,8 @@ coverage command above when working on test depth.
   signals were available
 - Top-level predictive outlook says no data gaps were recorded when all
   collected signals completed cleanly
+- Top-level predictive outlook preserves collected data gaps when an unexpected
+  forecasting exception forces an error response
 - Top-level predictive outlook preserves optional collector resource type on
   collect/parse failures so incomplete Secret inventory still qualifies TLS
   forecasts
