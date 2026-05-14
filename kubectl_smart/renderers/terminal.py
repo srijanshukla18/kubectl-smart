@@ -10,6 +10,7 @@ producing the exact output format described in the product specification.
 from typing import List, Optional
 
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
 from ..models import (
@@ -226,7 +227,7 @@ class TerminalRenderer:
         console.print(f"\n⚪ DATA GAPS ({len(data_gaps)})")
         console.print("[dim]Analysis used the available signals; these collectors were incomplete:[/dim]")
         for gap in data_gaps[:5]:
-            console.print(f"  [dim]• {gap}[/dim]")
+            console.print(f"  [dim]• {escape(gap)}[/dim]")
         remaining = len(data_gaps) - 5
         if remaining > 0:
             console.print(f"  [dim]• ... {remaining} more data gaps not shown[/dim]")

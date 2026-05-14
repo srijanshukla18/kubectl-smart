@@ -251,6 +251,22 @@ class TestRenderDiagnosis:
         assert "collector 5 unavailable" not in output
         assert "... 2 more data gaps not shown" in output
 
+    def test_render_diagnosis_escapes_data_gap_markup(
+        self, sample_subject_ctx, sample_resource_record
+    ):
+        """Test data gaps are rendered literally, not as Rich markup."""
+        renderer = TerminalRenderer(colors_enabled=False)
+        result = DiagnosisResult(
+            subject=sample_subject_ctx,
+            resource=sample_resource_record,
+            data_gaps=["collector unavailable: before [red]not literal[/red] after"],
+            analysis_duration=1.0,
+        )
+
+        output = renderer.render_diagnosis(result)
+
+        assert "[red]not literal[/red]" in output
+
     def test_render_diagnosis_resource_not_found(self, sample_subject_ctx):
         """Test diagnosis rendering when resource not found"""
         renderer = TerminalRenderer(colors_enabled=False)
