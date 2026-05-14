@@ -1237,6 +1237,82 @@ class TopCommand(BaseCommand):
             gap.startswith(f"get {resource_type} unavailable (not_found)")
             for gap in self.data_gaps
         )
+
+    def _merge_pvc_metrics(self, resources: List[ResourceRecord]) -> List[ResourceRecord]:
+        """Attach kubelet PVC metric records to matching PVC inventory records."""
+        metric_by_key: Dict[tuple[Optional[str], str], Dict[str, object]] = {}
+        inventory_keys: set[tuple[Optional[str], str]] = set()
+
+        for resource in resources:
+            if resource.kind != ResourceKind.PVC:
+                continue
+            key = (resource.namespace, resource.name)
+            if not resource.uid.startswith("pvc-metrics-"):
+                inventory_keys.add(key)
+            metrics = resource.get_property("metrics", {})
+            if (
+                isinstance(metrics, dict)
+                and "pvc_used_bytes" in metrics
+                and "pvc_capacity_bytes" in metrics
+            ):
+                metric_by_key[key] = metrics
+
+        if not metric_by_key:
+            return resources
+
+        merged: List[ResourceRecord] = []
+        for resource in resources:
+            if resource.kind != ResourceKind.PVC:
+                merged.append(resource)
+                continue
+
+            key = (resource.namespace, resource.name)
+            if resource.uid.startswith("pvc-metrics-") and key in inventory_keys:
+                continue
+
+            metrics = metric_by_key.get(key)
+            if metrics and not resource.uid.startswith("pvc-metrics-"):
+                properties = dict(resource.properties)
+                existing_metrics = properties.get("metrics", {})
+                if not isinstance(existing_metrics, dict):
+                    existing_metrics = {}
+                properties["metrics"] = {**existing_metrics, **metrics}
+                merged.append(resource.model_copy(update={"properties": properties}))
+            else:
+                merged.append(resource)
+
+        return merged
+
+    def _record_missing_pvc_metric_gaps(self, resources: List[ResourceRecord]) -> None:
+        """Record incomplete PVC usage evidence after kubelet metric merging."""
+        missing = []
+        for resource in resources:
+            if resource.kind != ResourceKind.PVC:
+                continue
+            if resource.uid.startswith("pvc-metrics-"):
+                continue
+            storage_request = resource.get_property("spec.resources.requests.storage")
+            if not storage_request:
+                continue
+            metrics = resource.get_property("metrics", {})
+            if not (
+                isinstance(metrics, dict)
+                and metrics.get("pvc_used_bytes") is not None
+                and metrics.get("pvc_capacity_bytes") is not None
+            ):
+                missing.append(resource.name)
+
+        if not missing:
+            return
+
+        shown = ", ".join(missing[:5])
+        remaining = len(missing) - 5
+        if remaining > 0:
+            shown += f", ... {remaining} more"
+        self._add_data_gap(
+            "kubelet persistentvolumeclaims unavailable (incomplete): "
+            f"missing kubelet_volume_stats metrics for {shown}"
+        )
     
     async def execute(self, subject: SubjectCtx) -> CommandResult:
         """Execute top command"""
@@ -1312,12 +1388,15 @@ class TopCommand(BaseCommand):
                     self._add_data_gap(
                         f"{collector_label} output could not be parsed: {str(e).splitlines()[0]}"
                     )
+
+            all_resources = self._merge_pvc_metrics(all_resources)
             
             # Filter to namespace resources
             namespace_resources = [
                 r for r in all_resources 
                 if r.namespace == subject.name or r.kind.value in ['Node', 'PersistentVolume']
             ]
+            self._record_missing_pvc_metric_gaps(namespace_resources)
             
             # Get metrics data for forecasting
             metrics_data = [r for r in all_resources if r.properties.get('metrics')]

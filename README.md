@@ -104,7 +104,9 @@ kubectl-smart top production --timeout 3
 
 Data sources and behavior:
 - CPU/Memory: metrics-server (`kubectl top`) snapshot; forecasts improve across runs using a small local cache.
-- PVC Disk usage: kubelet Prometheus metrics (kubelet_volume_stats_* via API proxy). If unavailable, output notes that signals may be limited.
+- PVC Disk usage: kubelet Prometheus metrics (kubelet_volume_stats_* via API
+  proxy). If PVCs exist but usable volume stats are unavailable, output records
+  an explicit data gap instead of treating storage usage as clean.
 - Certificate expiry: parses Secret `tls.crt` via X.509; warns when ≤ 14 days.
   If Secret inventory is available, also warns when an Ingress references a
   missing TLS Secret. If Secret collection is blocked, the missing-reference

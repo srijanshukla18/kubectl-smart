@@ -107,8 +107,9 @@ Say:
 > Finally, `top` looks at predictive risks in the namespace. In this demo it
 > spots an actually short-lived TLS Secret, not just an Ingress reference, so
 > the same tool can help with immediate debugging and with "this will bite us
-> soon" problems. If a signal is missing, like metrics-server, it says that
-> explicitly under data gaps instead of pretending the analysis was complete.
+> soon" problems. If a signal is missing, like metrics-server or kubelet PVC
+> volume stats, it says that explicitly under data gaps instead of pretending
+> the analysis was complete.
 
 ### 1:35-2:35 - Case 2: Fulfillment Config Trap
 

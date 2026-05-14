@@ -1630,6 +1630,148 @@ class TestTopCommand:
         assert captured["secret_inventory_complete"] is False
         assert "get secrets output could not be parsed: malformed json" in result.output
 
+    @pytest.mark.asyncio
+    @patch("kubectl_smart.cli.commands.collector_registry")
+    @patch("kubectl_smart.cli.commands.parser_registry")
+    async def test_execute_merges_kubelet_pvc_metrics_before_forecast(
+        self, mock_parser_registry, mock_collector_registry
+    ):
+        """Test PVC inventory and kubelet volume stats are forecast together."""
+        captured = {}
+        pvc = ResourceRecord(
+            kind=ResourceKind.PVC,
+            name="data-pvc",
+            uid="pvc-uid",
+            namespace="default",
+            status="Bound",
+            properties={
+                "spec": {
+                    "resources": {"requests": {"storage": "10Gi"}},
+                }
+            },
+        )
+        pvc_metrics = ResourceRecord(
+            kind=ResourceKind.PVC,
+            name="data-pvc",
+            uid="pvc-metrics-default-data-pvc",
+            namespace="default",
+            status="Active",
+            properties={
+                "metrics": {
+                    "pvc_used_bytes": 5_000_000_000,
+                    "pvc_capacity_bytes": 10_000_000_000,
+                }
+            },
+        )
+
+        class FakeForecastingEngine:
+            def predict_capacity_issues(self, resources, metrics_data):
+                pvcs = [r for r in resources if r.kind == ResourceKind.PVC]
+                captured["pvc_count"] = len(pvcs)
+                captured["metrics"] = pvcs[0].properties.get("metrics")
+                return []
+
+            def predict_certificate_expiry(
+                self,
+                resources,
+                secret_inventory_complete=True,
+            ):
+                return []
+
+        def create_collector(name, **kwargs):
+            resource_type = kwargs.get("resource_type", name)
+            source = "kubelet_metrics" if name == "kubelet" else f"{name}_{resource_type}"
+            collector = MagicMock()
+            collector.name = source
+            collector.collect = AsyncMock(return_value=RawBlob(data={}, source=source))
+            return collector
+
+        def parse(blob):
+            if blob.source == "get_persistentvolumeclaims":
+                return [pvc]
+            if blob.source == "kubelet_metrics":
+                return [pvc_metrics]
+            return []
+
+        mock_collector_registry.create.side_effect = create_collector
+        mock_parser_registry.parse.side_effect = parse
+
+        cmd = TopCommand()
+        cmd.forecasting_engine = FakeForecastingEngine()
+        subject = SubjectCtx(
+            kind=ResourceKind.NAMESPACE, name="default", namespace="default"
+        )
+        result = await cmd.execute(subject)
+
+        assert result.exit_code == 0
+        assert captured["pvc_count"] == 1
+        assert captured["metrics"] == {
+            "pvc_used_bytes": 5_000_000_000,
+            "pvc_capacity_bytes": 10_000_000_000,
+        }
+        assert "missing kubelet_volume_stats" not in result.output
+
+    @pytest.mark.asyncio
+    @patch("kubectl_smart.cli.commands.collector_registry")
+    @patch("kubectl_smart.cli.commands.parser_registry")
+    async def test_execute_records_missing_pvc_metric_gap(
+        self, mock_parser_registry, mock_collector_registry
+    ):
+        """Test PVC inventory without kubelet volume stats is not silent."""
+        pvc = ResourceRecord(
+            kind=ResourceKind.PVC,
+            name="data-pvc",
+            uid="pvc-uid",
+            namespace="default",
+            status="Bound",
+            properties={
+                "spec": {
+                    "resources": {"requests": {"storage": "10Gi"}},
+                }
+            },
+        )
+
+        class FakeForecastingEngine:
+            def predict_capacity_issues(self, resources, metrics_data):
+                return []
+
+            def predict_certificate_expiry(
+                self,
+                resources,
+                secret_inventory_complete=True,
+            ):
+                return []
+
+        def create_collector(name, **kwargs):
+            resource_type = kwargs.get("resource_type", name)
+            source = "kubelet_metrics" if name == "kubelet" else f"{name}_{resource_type}"
+            collector = MagicMock()
+            collector.name = source
+            collector.collect = AsyncMock(return_value=RawBlob(data={}, source=source))
+            return collector
+
+        def parse(blob):
+            if blob.source == "get_persistentvolumeclaims":
+                return [pvc]
+            return []
+
+        mock_collector_registry.create.side_effect = create_collector
+        mock_parser_registry.parse.side_effect = parse
+
+        cmd = TopCommand()
+        cmd.forecasting_engine = FakeForecastingEngine()
+        subject = SubjectCtx(
+            kind=ResourceKind.NAMESPACE, name="default", namespace="default"
+        )
+        result = await cmd.execute(subject)
+
+        assert result.exit_code == 0
+        assert "DATA GAPS" in result.output
+        assert cmd.data_gaps == [
+            "kubelet persistentvolumeclaims unavailable (incomplete): "
+            "missing kubelet_volume_stats metrics for data-pvc"
+        ]
+
 
 class TestCollectData:
     """Tests for _collect_data method"""

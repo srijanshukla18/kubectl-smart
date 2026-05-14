@@ -174,13 +174,14 @@ assert_contains "$service_diag" "Service has no ready endpoints" "service endpoi
 assert_contains "$service_diag" "Endpoints/${NAMESPACE}/inventory-db: ready addresses=0" "endpoint count evidence"
 assert_contains "$service_diag" "No Pods in namespace match selector" "selector evidence"
 
-log "Checking predictive outlook shows TLS warning and explicit metrics data gap..."
+log "Checking predictive outlook shows TLS warning and explicit metrics/storage data gaps..."
 top_outlook="$(capture top_outlook "${KUBECTL_SMART_CMD[@]}" top "$NAMESPACE" --context "$KUBECTL_SMART_CONTEXT" --horizon 72 --timeout 2)"
 assert_status top_outlook 0
 assert_contains "$top_outlook" "PREDICTIVE OUTLOOK: namespace ${NAMESPACE}" "top namespace header"
 assert_contains "$top_outlook" "CERTIFICATE WARNINGS" "top certificate warning"
-assert_contains "$top_outlook" "DATA GAPS (1)" "top data-gap count"
+assert_contains "$top_outlook" "DATA GAPS (2)" "top data-gap count"
 assert_contains "$top_outlook" "metrics pods unavailable" "top metrics data gap"
+assert_contains "$top_outlook" "kubelet persistentvolumeclaims unavailable" "top kubelet PVC data gap"
 
 log "Checking top fails closed when the namespace is missing..."
 missing_top="$(capture missing_top "${KUBECTL_SMART_CMD[@]}" top kubectl-smart-definitely-missing --context "$KUBECTL_SMART_CONTEXT" --timeout 2)"
