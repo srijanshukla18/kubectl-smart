@@ -286,3 +286,25 @@ async def test_check_resource_passes_collector_timeout(monkeypatch):
     await watcher._check_resource(FakeRenderer(), "text")
 
     assert captured["timeout"] == 2.5
+
+
+@pytest.mark.asyncio
+async def test_watch_start_returns_error_code_for_fatal_loop_error(
+    monkeypatch,
+    capsys,
+):
+    """Watch mode should not report success after the watch loop crashes."""
+    subject = SubjectCtx(kind=ResourceKind.POD, name="api", namespace="default")
+    watcher = ResourceWatcher(subject, interval_seconds=1)
+
+    async def fail_check(*_args, **_kwargs):
+        raise RuntimeError("terminal refresh failed")
+
+    monkeypatch.setattr(watcher, "_check_resource", fail_check)
+
+    exit_code = await watcher.start(renderer=object(), output_format="text")
+    output = capsys.readouterr().out
+
+    assert exit_code == 2
+    assert "Watch error: terminal refresh failed" in output
+    assert watcher.running is False

@@ -70,12 +70,15 @@ class ResourceWatcher:
         self.iteration_count = 0
         self.last_check_failed = False
 
-    async def start(self, renderer=None, output_format: str = "text") -> None:
+    async def start(self, renderer=None, output_format: str = "text") -> int:
         """Start watching the resource
 
         Args:
             renderer: Renderer to use for output
             output_format: Output format (text or json)
+
+        Returns:
+            Process-style exit code: 0 for a clean stop, 2 for fatal watch errors.
         """
         if renderer is None:
             from .renderers.terminal import TerminalRenderer
@@ -99,10 +102,14 @@ class ResourceWatcher:
             print("\n\n⏹️  Watch stopped by user", flush=True)
             self._print_summary()
             self.stop()
+            return 0
         except Exception as e:
             logger.error("Watch failed", error=str(e))
             print(f"\n❌ Watch error: {e}", flush=True)
             self.stop()
+            return 2
+
+        return 0
 
     def stop(self) -> None:
         """Stop watching"""

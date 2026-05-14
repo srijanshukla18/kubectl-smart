@@ -417,10 +417,10 @@ def diag(
         )
 
         try:
-            asyncio.run(watcher.start(output_format=output))
+            watch_exit_code = asyncio.run(watcher.start(output_format=output))
         except KeyboardInterrupt:
-            pass
-        raise typer.Exit(0)
+            watch_exit_code = 0
+        raise typer.Exit(watch_exit_code)
 
     # Lazy import to avoid slow startup
     from .commands import DiagCommand

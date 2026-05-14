@@ -499,6 +499,7 @@ class TestDiagCommand:
 
             async def start(self, output_format="text"):
                 captured["output_format"] = output_format
+                return 0
 
         with patch("kubectl_smart.watch.ResourceWatcher", FakeWatcher):
             result = runner.invoke(
@@ -509,6 +510,21 @@ class TestDiagCommand:
         assert result.exit_code == 0
         assert captured["collector_timeout"] == 4.0
         assert captured["output_format"] == "text"
+
+    def test_diag_watch_uses_watcher_exit_code(self):
+        """Test fatal watch-loop errors are not flattened to successful exits."""
+
+        class FakeWatcher:
+            def __init__(self, subject, interval_seconds, collector_timeout=None):
+                pass
+
+            async def start(self, output_format="text"):
+                return 2
+
+        with patch("kubectl_smart.watch.ResourceWatcher", FakeWatcher):
+            result = runner.invoke(app, ["diag", "pod", "api", "--watch"])
+
+        assert result.exit_code == 2
 
     @patch("kubectl_smart.batch.BatchAnalyzer.diagnose_all")
     def test_diag_all_ingress_uses_kubectl_plural_header(self, mock_diagnose_all):
