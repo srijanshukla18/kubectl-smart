@@ -3,10 +3,13 @@
 ## Setup Before Recording
 
 Run from the repository checkout. Pin the demo context for this shell so the
-recording does not depend on the global kubectl context:
+recording does not depend on the global kubectl context.
 
 ```bash
 export KUBECTL_SMART_CONTEXT=kind-kubectl-smart-demo
+export KUBECTL_SMART_CMD=./kubectl-smart
+
+./demo-complex-scenarios.sh apply
 kubectl --context "$KUBECTL_SMART_CONTEXT" get pods -n kubectl-smart-complex
 ./demo-smoke.sh
 ```
@@ -17,19 +20,22 @@ Expected demo context:
 kind-kubectl-smart-demo
 ```
 
-## Transcript
+Do not use `colima` for the recording. Keep the demo pinned to the explicit
+`kind-kubectl-smart-demo` context.
 
-### 0:00-0:25 - Hook
+## Recommended 3-Minute Transcript
+
+### 0:00-0:22 - Hook
 
 Say:
 
-> Kubernetes debugging usually starts with a pile of separate commands: get pods,
-> describe, logs, events, services, PVCs, secrets, and then you mentally stitch
-> the story together.
+> Kubernetes debugging usually starts with a pile of separate commands:
+> describe, logs, events, services, selectors, PVCs, secrets, metrics, and then
+> you mentally stitch the story together while something is broken.
 >
-> I built `kubectl-smart` for that messy middle part. It is a read-only kubectl
-> plugin that pulls the usual debugging signals together and turns them into
-> three views: root cause, dependency graph, and predictive warnings.
+> `kubectl-smart` is a read-only kubectl helper for that first pass. It gives me
+> three views: `diag` for evidence-backed root cause, `graph` for dependency
+> context, and `top` for predictive risks and missing signals.
 
 Run:
 
@@ -39,112 +45,155 @@ Run:
 
 Say:
 
-> The three commands are intentionally simple: `diag`, `graph`, and `top`.
-> Let me show you two failure stories that are a little more realistic than a
-> single broken pod.
+> The important part is that it does not try to replace kubectl. It compresses
+> the first few minutes of kubectl work, and it tells me when the cluster did
+> not give it enough evidence.
 
-### 0:25-1:35 - Case 1: Checkout Cascade
+### 0:22-1:52 - Case 1: Checkout Cascade
 
 Say:
 
-> First scenario: a checkout service is failing. In a real incident, this kind of
-> thing is annoying because the pod is only the visible symptom. It depends on a
-> ConfigMap, Secret, PVC, ServiceAccount, Service, StatefulSet, and there is also
-> TLS sitting in the namespace.
+> First case: checkout is failing. This is intentionally more realistic than one
+> bad pod. There is an owning StatefulSet, a child pod, ConfigMaps, Secrets,
+> PVCs, a ServiceAccount, a Service, an Ingress, metrics signals, and a short
+> lived TLS Secret in the namespace.
 
 Run:
 
 ```bash
-./kubectl-smart diag sts checkout-api -n kubectl-smart-complex
+./kubectl-smart diag sts checkout-api -n kubectl-smart-complex --context "$KUBECTL_SMART_CONTEXT"
 ```
 
 Say:
 
-> I do not even need to start at the exact pod. I can start at the owning
-> StatefulSet, and `diag` follows the ownership chain down to the child pod.
-> Kubernetes is reporting BackOff, but the tool promotes the more useful
-> evidence: the application logs show fatal startup errors and a panic. So
-> instead of me treating BackOff as the answer, the first screen tells me what
-> failed inside the container, and keeps the BackOff event as supporting context.
-
-Run:
-
-```bash
-./kubectl-smart graph pod checkout-api-0 -n kubectl-smart-complex --upstream --downstream
-```
-
-Say:
-
-> Now `graph` gives me the shape of the blast radius. Upstream, I can see the
-> node, PVC, ConfigMap, Secret, ServiceAccount, and the owning StatefulSet.
-> Downstream, I can see the Service that points at this pod.
+> I can start at the StatefulSet instead of knowing the exact pod name.
+> `kubectl-smart` follows the owner chain to the child pod and separates the
+> symptom from the useful evidence.
 >
-> This is the part I wanted while debugging: not just "what is broken", but "what
-> is this thing connected to?"
+> Kubernetes is reporting BackOff, but the diagnosis promotes the better clue:
+> the application log evidence shows fatal startup errors and a panic. The
+> BackOff event is still there as supporting evidence, but it is not treated as
+> the root cause by itself.
 
 Run:
 
 ```bash
-./kubectl-smart diag svc inventory-db -n kubectl-smart-complex
+./kubectl-smart graph pod checkout-api-0 -n kubectl-smart-complex --upstream --downstream --context "$KUBECTL_SMART_CONTEXT"
 ```
 
 Say:
 
-> Here is the same idea applied to a Service. `diag` does not just say "the
-> service exists." It checks the Endpoints object and the selector. The useful
-> evidence is right there: zero ready endpoint addresses, selector
-> `app=inventory-db,release=stable`, and no pods in the namespace matching that
-> selector.
+> Now `graph` shows the blast radius around that pod. Upstream, I can see the
+> node, PVC, ConfigMap, Secret, ServiceAccount, and owning StatefulSet.
+> Downstream, I can see the Service that sends traffic here.
+>
+> This is the mental map I usually build manually during an incident: what is
+> broken, what feeds it, and what depends on it.
 
 Run:
 
 ```bash
-./kubectl-smart top kubectl-smart-complex --horizon 72
+./kubectl-smart diag svc inventory-db -n kubectl-smart-complex --context "$KUBECTL_SMART_CONTEXT"
 ```
 
 Say:
 
-> Finally, `top` looks at predictive risks in the namespace. In this demo it
-> spots an actually short-lived TLS Secret, not just an Ingress reference, so
-> the same tool can help with immediate debugging and with "this will bite us
-> soon" problems. If a signal is missing, like metrics-server or kubelet PVC
-> volume stats, it says that explicitly under data gaps instead of pretending
-> the analysis was complete.
-
-### 1:35-2:35 - Case 2: Fulfillment Config Trap
-
-Say:
-
-> Second scenario: a fulfillment worker looks like a scheduling/config problem.
-> The pod exists, it is assigned to a node, the image pulls, but it never starts.
-> This is the sort of issue where the useful evidence is buried in events.
+> Here is a Service-level failure. The Service exists, but the useful evidence
+> is the Endpoints and selector check: zero ready endpoint addresses, selector
+> `app=inventory-db,release=stable`, and no pods matching that selector.
+>
+> That is the difference I want: not "the object exists", but "this object is
+> not routing to anything, and here is the exact Kubernetes evidence."
 
 Run:
 
 ```bash
-./kubectl-smart diag pod fulfillment-worker-0 -n kubectl-smart-complex
+./kubectl-smart top kubectl-smart-complex --horizon 72 --context "$KUBECTL_SMART_CONTEXT"
 ```
 
 Say:
 
-> Here `diag` points directly at the actual failure: Kubernetes cannot find the
-> runtime Secret referenced by the pod. It shows the exact Warning event as
-> evidence and suggests checking or restoring that Secret, instead of sending me
-> down a useless log-checking path.
+> Finally, `top` is the proactive view. It looks for risks like certificate
+> expiry, pod and node capacity signals from metrics-server, and PVC usage when
+> kubelet volume stats are exposed.
+>
+> The trust detail is the data-gap behavior. If metrics-server is missing, still
+> warming up, blocked by RBAC, or kubelet does not expose PVC stats, it says that
+> explicitly. If the collected signals are clean, it says no data gaps were
+> recorded. It does not silently pretend the analysis is complete.
+
+### 1:52-2:42 - Case 2: Restricted RBAC Honesty
+
+Say:
+
+> Second case is about trust. This kubeconfig is intentionally restricted: it
+> can read the pod, but it cannot read Events or pod logs. A lot of tools either
+> fail hard here or make the output look more certain than it is.
 
 Run:
 
 ```bash
-./kubectl-smart graph pod fulfillment-worker-0 -n kubectl-smart-complex --upstream --downstream
+env KUBECONFIG=.kubectl-smart-rbac.kubeconfig \
+  ./kubectl-smart diag pod checkout-api-0 \
+  -n kubectl-smart-complex \
+  --context kubectl-smart-rbac-demo
 ```
 
 Say:
 
-> And the graph is still useful even though the container never starts. I can see
-> that the pod has a PVC, ConfigMap, mounted Secret, ServiceAccount, owning
-> StatefulSet, and downstream Service. The important bit is that the missing env
-> Secret also appears as a red upstream dependency, so the graph does not hide
-> required resources just because they are absent.
+> Here the tool still gives the pod status evidence it can support, but the
+> missing collectors are called out under `DATA GAPS` with the exact RBAC errors
+> for Events and logs.
+>
+> Notice the posture: it stays useful, but it does not upgrade incomplete
+> evidence into a critical claim. That is the behavior I want during a real
+> incident.
+
+### 2:42-3:00 - Close
+
+Say:
+
+> So the pitch is simple: keep kubectl, but make the first debugging pass
+> faster. Start from the object you know, get evidence-backed root cause, see
+> the dependency shape, and understand which signals were missing.
+>
+> This is still early and open source, but it is built around the thing I care
+> about most in cluster debugging: useful output that stays honest.
+
+## Optional Longer Case: Fulfillment Config Trap
+
+Use this if you want the second story to be a separate workload failure instead
+of the RBAC cutaway.
+
+Say:
+
+> Here is another realistic failure. The pod is scheduled, the image pulls, and
+> the dependency graph is rich, but the container never starts because a runtime
+> Secret referenced through environment variables is missing.
+
+Run:
+
+```bash
+./kubectl-smart diag pod fulfillment-worker-0 -n kubectl-smart-complex --context "$KUBECTL_SMART_CONTEXT"
+```
+
+Say:
+
+> `diag` points directly at the Kubernetes event: the runtime Secret is not
+> found. That matters because logs will not help when the container never
+> starts.
+
+Run:
+
+```bash
+./kubectl-smart graph pod fulfillment-worker-0 -n kubectl-smart-complex --upstream --downstream --context "$KUBECTL_SMART_CONTEXT"
+```
+
+Say:
+
+> The graph still helps before the container starts. It shows the PVC,
+> ConfigMap, mounted Secret, ServiceAccount, owning StatefulSet, downstream
+> Service, and the missing env Secret as an upstream dependency.
 
 Run:
 
@@ -157,61 +206,26 @@ Say:
 > This is the raw kubectl evidence underneath the diagnosis: scheduled, image
 > pulled, then `secret missing-fulfillment-runtime-token not found`.
 
-### 2:35-3:00 - Close
-
-Say:
-
-> The point of `kubectl-smart` is not to replace kubectl. It is to compress the
-> first few minutes of debugging into one or two commands, while staying
-> read-only and transparent about the evidence.
->
-> If you already know Kubernetes, this gives you a faster first pass. If you are
-> still learning Kubernetes, it shows you which signals matter and how resources
-> are connected.
->
-> The project is open source, early, and I would love feedback from people who
-> debug real clusters.
-
-## Optional Trust Cutaway
-
-Use this only if you want to show the safety behavior instead of the shorter
-close.
-
-Run:
-
-```bash
-env KUBECONFIG=.kubectl-smart-rbac.kubeconfig ./kubectl-smart diag pod checkout-api-0 -n kubectl-smart-complex --context kubectl-smart-rbac-demo
-```
-
-Say:
-
-> One design choice I care about is not pretending. This kubeconfig can read the
-> pod, but it cannot read Events or pod logs. So `kubectl-smart` still gives me
-> the diagnosis it can support from pod status, and then it shows those missing
-> collectors under `DATA GAPS` with the exact RBAC errors. Notice it does not
-> upgrade that limited evidence into a critical claim. That is the behavior I
-> want in real incidents: useful, but honest about what it could not see.
-
 ## Shorter 60-Second Version
 
 Say:
 
-> `kubectl-smart` is a read-only kubectl plugin for the first few minutes of
-> Kubernetes debugging. It has three commands: `diag` for root cause, `graph` for
-> dependencies, and `top` for predictive risks like certificates and capacity.
+> `kubectl-smart` is a read-only kubectl helper for the first few minutes of
+> Kubernetes debugging. It has three commands: `diag` for root cause, `graph`
+> for dependencies, and `top` for predictive risks and missing signals.
 
 Run:
 
 ```bash
-./kubectl-smart diag pod checkout-api-0 -n kubectl-smart-complex
-./kubectl-smart graph pod checkout-api-0 -n kubectl-smart-complex --upstream --downstream
-./kubectl-smart diag svc inventory-db -n kubectl-smart-complex
-./kubectl-smart top kubectl-smart-complex --horizon 72
+./kubectl-smart diag sts checkout-api -n kubectl-smart-complex --context "$KUBECTL_SMART_CONTEXT"
+./kubectl-smart graph pod checkout-api-0 -n kubectl-smart-complex --upstream --downstream --context "$KUBECTL_SMART_CONTEXT"
+./kubectl-smart diag svc inventory-db -n kubectl-smart-complex --context "$KUBECTL_SMART_CONTEXT"
+./kubectl-smart top kubectl-smart-complex --horizon 72 --context "$KUBECTL_SMART_CONTEXT"
 ```
 
 Say:
 
-> In one flow, I get the actual fatal log evidence behind a restart loop, the
-> dependency shape around the workload, a selector-to-endpoints failure on a
-> Service, and an expiring TLS certificate in the namespace. That is the job:
-> keep kubectl, but make the first debugging pass much faster.
+> In one flow, I get the fatal log evidence behind a restart loop, the dependency
+> graph around the workload, a selector-to-endpoints failure on a Service, and
+> proactive risk checks with explicit data gaps. That is the job: keep kubectl,
+> but make the first pass faster and more honest.
