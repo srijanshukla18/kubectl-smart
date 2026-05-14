@@ -5,7 +5,7 @@
 - Unit test command: `uv run --extra dev pytest`
 - Coverage command: `uv run --extra dev pytest --cov=kubectl_smart --cov-report=term-missing`
 - Local integration command: `KUBECTL_SMART_CONTEXT=kind-kubectl-smart-demo KUBECTL_SMART_CMD=./kubectl-smart ./test.sh`
-- Latest local result: `515 passed`
+- Latest local result: `517 passed`
 - Latest measured coverage: `88%`
 - Latest local integration result: `54 passed, 0 failed`
 
@@ -99,6 +99,10 @@ coverage command above when working on test depth.
   rows so current node CPU/memory pressure is visible without historical samples
 - Top-level predictive outlook preserves node inventory and node metrics
   creation, collection, and parse failures as explicit data gaps
+- CLI-level predictive outlook is exercised with a fake `kubectl` happy path
+  for metrics-server pod metrics, node metrics, and kubelet PVC volume stats
+- Metrics-server node rows feed capacity forecasting without becoming duplicate
+  node inventory targets
 - Watch-state extraction for warning, critical, and unexpected exit codes,
   diagnosis-detail change detection, and data-gap appearance/resolution
 - Watch mode exits nonzero when the watch loop itself fails

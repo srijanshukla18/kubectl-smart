@@ -1,6 +1,7 @@
 """Tests for kubectl_smart/cli/main.py"""
 
 import os
+import stat
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -947,6 +948,79 @@ class TestTopCommand:
 
         assert result.exit_code == 2
         assert "--timeout must be greater than 0 seconds" in result.stderr
+
+    def test_top_metrics_happy_path_with_fake_kubectl(self, tmp_path, monkeypatch):
+        """Test real CLI top path when metrics-server and kubelet stats exist."""
+        fake_kubectl = tmp_path / "kubectl"
+        fake_kubectl.write_text(
+            """#!/usr/bin/env python3
+import json
+import sys
+
+args = sys.argv[1:]
+
+def emit(obj):
+    print(json.dumps(obj))
+
+def list_obj(items):
+    return {"apiVersion": "v1", "kind": "List", "items": items}
+
+if args[:3] == ["get", "namespace", "prod"]:
+    emit({
+        "apiVersion": "v1",
+        "kind": "Namespace",
+        "metadata": {"name": "prod", "uid": "ns-prod"},
+    })
+elif args[:2] == ["top", "pods"]:
+    print("NAME CPU(cores) MEMORY(bytes)")
+    print("api-0 100m 128Mi")
+elif args[:2] == ["get", "nodes"]:
+    emit(list_obj([{
+        "apiVersion": "v1",
+        "kind": "Node",
+        "metadata": {"name": "node-a", "uid": "node-a"},
+        "status": {"conditions": [{"type": "Ready", "status": "True"}]},
+    }]))
+elif args[:2] == ["top", "node"]:
+    print("NAME CPU(cores) CPU% MEMORY(bytes) MEMORY%")
+    print("node-a 950m 95% 512Mi 20%")
+elif args[:3] == ["get", "--raw", "/api/v1/nodes/node-a/proxy/metrics"]:
+    print('kubelet_volume_stats_used_bytes{namespace="prod",persistentvolumeclaim="data-pvc"} 9500000000')
+    print('kubelet_volume_stats_capacity_bytes{namespace="prod",persistentvolumeclaim="data-pvc"} 10000000000')
+elif args[:2] == ["get", "persistentvolumeclaims"]:
+    emit(list_obj([{
+        "apiVersion": "v1",
+        "kind": "PersistentVolumeClaim",
+        "metadata": {"name": "data-pvc", "namespace": "prod", "uid": "pvc-data"},
+        "spec": {"resources": {"requests": {"storage": "10Gi"}}},
+        "status": {"phase": "Bound"},
+    }]))
+elif args[:2] in (
+    ["get", "secrets"],
+    ["get", "ingresses"],
+    ["get", "persistentvolumes"],
+):
+    emit(list_obj([]))
+else:
+    print(f"unexpected kubectl args: {args}", file=sys.stderr)
+    sys.exit(1)
+""",
+            encoding="utf-8",
+        )
+        fake_kubectl.chmod(
+            fake_kubectl.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
+        )
+        monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+        monkeypatch.setenv("HOME", str(tmp_path))
+
+        result = runner.invoke(app, ["top", "prod", "--context", "kind-fixture"])
+
+        assert result.exit_code == 0
+        assert "CAPACITY WARNINGS (2)" in result.stdout
+        assert "Node/node-a" in result.stdout
+        assert "PersistentVolumeClaim/prod/data-pvc" in result.stdout
+        assert "Current: 95.0%" in result.stdout
+        assert "DATA GAPS" not in result.stdout
 
     @patch("kubectl_smart.cli.commands.TopCommand.execute")
     def test_top_error_sanitizes_control_sequences(self, mock_execute):

@@ -54,7 +54,10 @@ class ForecastingEngine:
         predictions = []
         
         # Analyze nodes for capacity issues
-        nodes = [r for r in resources if r.kind.value == "Node"]
+        nodes = [
+            r for r in resources
+            if r.kind.value == "Node" and not r.uid.startswith("metrics-node-")
+        ]
         for node in nodes:
             node_predictions = self._predict_node_capacity(node, metrics_data)
             predictions.extend(node_predictions)

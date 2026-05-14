@@ -149,6 +149,33 @@ class TestPredictCapacityIssues:
         assert predictions[0]["metric"] == "memory"
         assert predictions[0]["current_utilization"] == 91.0
 
+    def test_predict_capacity_issues_ignores_metrics_only_node_inventory(self):
+        """Test metrics-server node rows do not become duplicate target nodes."""
+        engine = ForecastingEngine()
+        node = ResourceRecord(
+            kind=ResourceKind.NODE,
+            name="node-a",
+            uid="node-uid",
+            properties={"status": {"conditions": []}},
+        )
+        metric = ResourceRecord(
+            kind=ResourceKind.NODE,
+            name="node-a",
+            uid="metrics-node-a",
+            properties={
+                "metrics": {
+                    "cpu_percent": "95",
+                    "memory_percent": "40",
+                }
+            },
+        )
+
+        predictions = engine.predict_capacity_issues([node, metric], [metric])
+
+        assert len(predictions) == 1
+        assert predictions[0]["resource"] == "Node/node-a"
+        assert predictions[0]["metric"] == "cpu"
+
 
 class TestPredictPVCUsage:
     """Tests for PVC usage prediction"""
