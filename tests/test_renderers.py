@@ -100,6 +100,49 @@ class TestRenderDiagnosis:
         assert "[blue]logs[/blue]" in output
         assert "[green]kubectl logs[/green]" in output
 
+    def test_render_diagnosis_sanitizes_terminal_control_sequences(
+        self, sample_subject_ctx, sample_resource_record
+    ):
+        """Test terminal control sequences in evidence cannot affect output."""
+        renderer = TerminalRenderer(colors_enabled=False)
+        issue = Issue(
+            resource_uid=sample_resource_record.uid,
+            title="Log \x1b[31mErrors\x1b[0m",
+            description="Saw panic\rwhile starting",
+            severity=IssueSeverity.CRITICAL,
+            score=95.0,
+            reason="LogFailure",
+            message="panic",
+            evidence=["Log line: \x1b[31mpanic\x1b[0m\a"],
+        )
+        event = ResourceRecord(
+            kind=ResourceKind.EVENT,
+            name="event",
+            uid="event-uid",
+            namespace="default",
+            properties={
+                "type": "Warning",
+                "reason": "BackOff",
+                "message": "Back-off \x1b[31mrestart\x1b[0m",
+            },
+        )
+        result = DiagnosisResult(
+            subject=sample_subject_ctx,
+            resource=sample_resource_record,
+            root_cause=issue,
+            recent_events=[event],
+            analysis_duration=1.0,
+        )
+
+        output = renderer.render_diagnosis(result)
+
+        assert "\x1b" not in output
+        assert "Errors" in output
+        assert "panic" in output
+        assert "\\rwhile starting" in output
+        assert "\\a" in output
+        assert "Back-off restart" in output
+
     def test_render_diagnosis_root_cause_only_is_nonzero(
         self, sample_subject_ctx, sample_resource_record, sample_issue
     ):
@@ -677,6 +720,18 @@ class TestRenderError:
 
         assert "Main [red]error[/red]" in output
         assert "Detail [yellow]context[/yellow]" in output
+
+    def test_render_error_sanitizes_terminal_control_sequences(self):
+        """Test error messages cannot emit terminal control sequences."""
+        renderer = TerminalRenderer(colors_enabled=False)
+        output = renderer.render_error(
+            "Main \x1b[31merror\x1b[0m",
+            "Detail\rcontext",
+        )
+
+        assert "\x1b" not in output
+        assert "Main error" in output
+        assert "Detail\\rcontext" in output
 
 
 class TestRenderRbacError:

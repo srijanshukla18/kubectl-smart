@@ -9,7 +9,9 @@ producing the exact output format described in the product specification.
 
 from typing import List, Optional
 
+from rich.ansi import AnsiDecoder
 from rich.console import Console
+from rich.control import escape_control_codes
 from rich.markup import escape
 from rich.table import Table
 
@@ -42,6 +44,15 @@ class TerminalRenderer:
             legacy_windows=False
         )
         self.colors_enabled = colors_enabled
+        self._ansi_decoder = AnsiDecoder()
+
+    def _display_text(self, value: object) -> str:
+        """Return text safe to interpolate in Rich markup strings."""
+        escaped_controls = escape_control_codes(str(value))
+        plain = "\n".join(
+            text.plain for text in self._ansi_decoder.decode(escaped_controls)
+        )
+        return escape(plain)
     
     def render_diagnosis(self, result: DiagnosisResult) -> str:
         """Render diagnosis result as specified in product requirements
@@ -58,7 +69,7 @@ class TerminalRenderer:
         with console.capture() as capture:
             if result.resource:
                 status_style = self._get_status_style(result.resource.status)
-                status = escape(str(result.resource.status))
+                status = self._display_text(result.resource.status)
                 console.print(f"\n📋 DIAGNOSIS: {result.resource.full_name}")
                 console.print(f"Status: [{status_style}]{status}[/{status_style}]")
             else:
@@ -77,8 +88,9 @@ class TerminalRenderer:
             if result.contributing_factors:
                 console.print(f"\n⚠️  CONTRIBUTING FACTORS ({len(result.contributing_factors)})")
                 for i, factor in enumerate(result.contributing_factors, 1):
-                    console.print(f"  {i}. {escape(factor.title)} (score: {factor.score:.1f})")
-                    console.print(f"     {escape(factor.description)}")
+                    title = self._display_text(factor.title)
+                    console.print(f"  {i}. {title} (score: {factor.score:.1f})")
+                    console.print(f"     {self._display_text(factor.description)}")
                     self._render_issue_evidence(console, factor, indent="     ")
 
             # Recent Events - New Section
@@ -102,10 +114,10 @@ class TerminalRenderer:
                     type_style = "red" if e_type == 'Warning' else "green"
                     
                     table.add_row(
-                        escape(str(ts)),
-                        f"[{type_style}]{escape(str(e_type))}[/{type_style}]",
-                        escape(str(event.properties.get('reason', 'Unknown'))),
-                        escape(str(event.properties.get('message', ''))),
+                        self._display_text(ts),
+                        f"[{type_style}]{self._display_text(e_type)}[/{type_style}]",
+                        self._display_text(event.properties.get('reason', 'Unknown')),
+                        self._display_text(event.properties.get('message', '')),
                     )
                 console.print(table)
             
@@ -113,7 +125,7 @@ class TerminalRenderer:
             if result.suggested_actions:
                 console.print("\n💡 SUGGESTED ACTIONS")
                 for i, action in enumerate(result.suggested_actions, 1):
-                    console.print(f"  {i}. {escape(action)}")
+                    console.print(f"  {i}. {self._display_text(action)}")
 
             self._render_data_gaps(console, result.data_gaps)
             
@@ -144,7 +156,7 @@ class TerminalRenderer:
             if result.ascii_graph:
                 console.print()
                 for line in result.ascii_graph.split('\n'):
-                    console.print(escape(line))
+                    console.print(self._display_text(line))
             
             # Summary statistics
             console.print("\n📊 GRAPH STATISTICS")
@@ -175,9 +187,9 @@ class TerminalRenderer:
             if result.capacity_warnings:
                 console.print(f"\n⚠️  CAPACITY WARNINGS ({len(result.capacity_warnings)})")
                 for warning in result.capacity_warnings:
-                    resource = escape(str(warning.get('resource', 'Unknown')))
-                    warning_type = escape(str(warning.get('type', 'Unknown')))
-                    action = escape(str(warning.get('suggested_action', 'Monitor')))
+                    resource = self._display_text(warning.get('resource', 'Unknown'))
+                    warning_type = self._display_text(warning.get('type', 'Unknown'))
+                    action = self._display_text(warning.get('suggested_action', 'Monitor'))
                     current = f"{warning.get('current_utilization', 0):.1f}%"
                     predicted = f"{warning.get('predicted_utilization', 0):.1f}%"
                     console.print(f"  • [cyan]{resource}[/cyan]")
@@ -191,11 +203,11 @@ class TerminalRenderer:
             if result.certificate_warnings:
                 console.print(f"\n🔒 CERTIFICATE WARNINGS ({len(result.certificate_warnings)})")
                 for warning in result.certificate_warnings:
-                    resource = escape(str(warning.get('resource', 'Unknown')))
-                    cert_type = escape(str(warning.get('certificate_type', 'Unknown')))
-                    expiry = escape(str(warning.get('expiry_date', 'Unknown')))
+                    resource = self._display_text(warning.get('resource', 'Unknown'))
+                    cert_type = self._display_text(warning.get('certificate_type', 'Unknown'))
+                    expiry = self._display_text(warning.get('expiry_date', 'Unknown'))
                     days_left = str(warning.get('days_until_expiry', 0))
-                    action = escape(str(warning.get('suggested_action', 'Renew')))
+                    action = self._display_text(warning.get('suggested_action', 'Renew'))
                     console.print(f"  • [cyan]{resource}[/cyan]")
                     console.print(
                         f"    Type: {cert_type} | Expires: [red]{expiry}[/red] | "
@@ -233,7 +245,7 @@ class TerminalRenderer:
         console.print(f"\n⚪ DATA GAPS ({len(data_gaps)})")
         console.print("[dim]Analysis used the available signals; these collectors were incomplete:[/dim]")
         for gap in data_gaps[:5]:
-            console.print(f"  [dim]• {escape(gap)}[/dim]")
+            console.print(f"  [dim]• {self._display_text(gap)}[/dim]")
         remaining = len(data_gaps) - 5
         if remaining > 0:
             console.print(f"  [dim]• ... {remaining} more data gaps not shown[/dim]")
@@ -248,9 +260,9 @@ class TerminalRenderer:
         console = Console(file=None, width=self.console.size.width)
         
         with console.capture() as capture:
-            console.print(f"[red]❌ Error:[/red] {escape(error_msg)}")
+            console.print(f"[red]❌ Error:[/red] {self._display_text(error_msg)}")
             if details:
-                console.print(f"[dim]{escape(details)}[/dim]")
+                console.print(f"[dim]{self._display_text(details)}[/dim]")
             self._render_data_gaps(console, data_gaps or [])
         
         return capture.get()
@@ -263,7 +275,7 @@ class TerminalRenderer:
             console.print("[red]🔒 RBAC Permission Denied[/red]")
             console.print("\nMissing permissions for:")
             for permission in missing_permissions:
-                console.print(f"  • {escape(permission)}")
+                console.print(f"  • {self._display_text(permission)}")
             
             console.print("\n💡 To fix this issue:")
             console.print("  1. Ask your cluster admin for additional permissions")
@@ -277,8 +289,12 @@ class TerminalRenderer:
         severity_style = self._get_severity_style(issue.severity)
         severity_icon = self._get_severity_icon(issue.severity)
         
-        console.print(f"  {severity_icon} [{severity_style}]{escape(issue.title)}[/{severity_style}] (score: {issue.score:.1f})")
-        console.print(f"    {escape(issue.description)}")
+        title = self._display_text(issue.title)
+        console.print(
+            f"  {severity_icon} [{severity_style}]{title}[/{severity_style}] "
+            f"(score: {issue.score:.1f})"
+        )
+        console.print(f"    {self._display_text(issue.description)}")
         
         if issue.critical_path:
             console.print("    [red]🎯 On critical dependency path[/red]")
@@ -289,7 +305,7 @@ class TerminalRenderer:
         if show_details and issue.suggested_actions:
             console.print("    [dim]Suggested actions:[/dim]")
             for action in issue.suggested_actions[:3]:  # Limit to top 3
-                console.print(f"    [dim]• {escape(action)}[/dim]")
+                console.print(f"    [dim]• {self._display_text(action)}[/dim]")
 
     def _render_issue_evidence(
         self,
@@ -300,7 +316,7 @@ class TerminalRenderer:
         if issue.evidence:
             console.print(f"{indent}[dim]Evidence:[/dim]")
             for evidence in issue.evidence[:5]:
-                console.print(f"{indent}[dim]• {escape(evidence)}[/dim]")
+                console.print(f"{indent}[dim]• {self._display_text(evidence)}[/dim]")
         elif issue.severity in {
             IssueSeverity.CRITICAL,
             IssueSeverity.WARNING,
