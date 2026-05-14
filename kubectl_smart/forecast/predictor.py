@@ -133,6 +133,42 @@ class ForecastingEngine:
                     'message': f"Node already experiencing {condition_type}",
                     'suggested_action': f"Investigate {condition_type.lower()} on node {node.name}"
                 })
+
+        # Surface current metrics-server pressure immediately when available.
+        if metrics_data:
+            current_metrics = next(
+                (
+                    metric.get_property('metrics', {})
+                    for metric in metrics_data
+                    if metric.kind.value == "Node" and metric.name == node.name
+                ),
+                {},
+            )
+            if isinstance(current_metrics, dict):
+                for metric_name, percent_key in (
+                    ("cpu", "cpu_percent"),
+                    ("memory", "memory_percent"),
+                ):
+                    current_utilization = self._parse_metric_percent(
+                        current_metrics.get(percent_key)
+                    )
+                    if current_utilization >= 90:
+                        predictions.append({
+                            'type': 'node_capacity',
+                            'resource': node.full_name,
+                            'metric': metric_name,
+                            'current_utilization': current_utilization,
+                            'predicted_utilization': current_utilization,
+                            'forecast_hours': 0,
+                            'message': (
+                                f"Node {metric_name.upper()} utilization is "
+                                f"{current_utilization:.1f}%"
+                            ),
+                            'suggested_action': (
+                                f"Reduce {metric_name} pressure on node {node.name} "
+                                "or add capacity"
+                            )
+                        })
         
         # Try to get historical metrics for prediction
         if metrics_data and STATSMODELS_AVAILABLE:
@@ -154,6 +190,15 @@ class ForecastingEngine:
                     })
         
         return predictions
+
+    def _parse_metric_percent(self, value: object) -> float:
+        """Parse a metrics-server percentage value."""
+        if value is None:
+            return 0.0
+        try:
+            return float(str(value).strip().rstrip('%'))
+        except (TypeError, ValueError):
+            return 0.0
     
     def _predict_pvc_usage(
         self, 

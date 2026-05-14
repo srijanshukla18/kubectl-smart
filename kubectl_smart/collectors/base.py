@@ -497,7 +497,9 @@ class MetricsServer(Collector):
             if subject.kind.value == "Pod":
                 args = ['top', 'pod', subject.name]
             elif subject.kind.value == "Node":
-                args = ['top', 'node', subject.name]
+                args = ['top', 'node']
+                if subject.name:
+                    args.append(subject.name)
             else:
                 # For other resources, collect namespace-wide metrics
                 args = ['top', 'pods']
@@ -518,7 +520,7 @@ class MetricsServer(Collector):
                 e,
                 subject,
                 operation="metrics",
-                resource_type="pods",
+                resource_type="nodes" if subject.kind.value == "Node" else "pods",
             )
 
 

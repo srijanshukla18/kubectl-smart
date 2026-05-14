@@ -1313,6 +1313,76 @@ class TopCommand(BaseCommand):
             "kubelet persistentvolumeclaims unavailable (incomplete): "
             f"missing kubelet_volume_stats metrics for {shown}"
         )
+
+    async def _collect_node_context(self, subject: SubjectCtx) -> List[ResourceRecord]:
+        """Collect cluster node inventory and metrics for capacity outlooks."""
+        cluster_subject = SubjectCtx(
+            kind=ResourceKind.NODE,
+            name="",
+            namespace=None,
+            context=subject.context,
+            scope="cluster",
+        )
+        collector_specs = [
+            ("get nodes", "get", {"resource_type": "nodes"}),
+            ("metrics nodes", "metrics", {}),
+        ]
+        collectors = []
+
+        for collector_label, collector_name, kwargs in collector_specs:
+            try:
+                collector = self._create_collector(collector_name, **kwargs)
+                collectors.append((collector_label, collector, cluster_subject))
+            except Exception as e:
+                resource_type = collector_label.split(" ", 1)[1]
+                logger.info(
+                    "Node context collector unavailable",
+                    collector=collector_name,
+                    resource_type=resource_type,
+                    error=str(e),
+                )
+                self._record_collector_creation_gap(
+                    collector_name,
+                    e,
+                    resource_type,
+                )
+
+        if not collectors:
+            return []
+
+        blobs = await asyncio.gather(
+            *[
+                collector.collect(collector_subject)
+                for _, collector, collector_subject in collectors
+            ],
+            return_exceptions=True,
+        )
+
+        resources: List[ResourceRecord] = []
+        for (collector_label, collector, _), blob in zip(collectors, blobs):
+            if isinstance(blob, Exception):
+                logger.info(
+                    "Node context collector failed",
+                    collector=collector.name,
+                    error=str(blob),
+                )
+                self._record_exception_gap(collector_label, blob)
+                continue
+
+            self._record_blob_gap(blob)
+            try:
+                resources.extend(parser_registry.parse(blob))
+            except Exception as e:
+                logger.info(
+                    "Node context parser failed",
+                    collector=collector.name,
+                    error=str(e),
+                )
+                self._add_data_gap(
+                    f"{collector_label} output could not be parsed: {str(e).splitlines()[0]}"
+                )
+
+        return resources
     
     async def execute(self, subject: SubjectCtx) -> CommandResult:
         """Execute top command"""
@@ -1335,6 +1405,8 @@ class TopCommand(BaseCommand):
                     exit_code=2,
                     analysis_duration=analysis_duration,
                 )
+
+            all_resources.extend(await self._collect_node_context(subject))
 
             # Additional targeted gets for resources needed by forecasting
             # Secrets (for TLS), Ingress (TLS references), PVC/PV (storage mapping)

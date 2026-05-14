@@ -179,8 +179,9 @@ top_outlook="$(capture top_outlook "${KUBECTL_SMART_CMD[@]}" top "$NAMESPACE" --
 assert_status top_outlook 0
 assert_contains "$top_outlook" "PREDICTIVE OUTLOOK: namespace ${NAMESPACE}" "top namespace header"
 assert_contains "$top_outlook" "CERTIFICATE WARNINGS" "top certificate warning"
-assert_contains "$top_outlook" "DATA GAPS (2)" "top data-gap count"
+assert_contains "$top_outlook" "DATA GAPS (3)" "top data-gap count"
 assert_contains "$top_outlook" "metrics pods unavailable" "top metrics data gap"
+assert_contains "$top_outlook" "metrics nodes unavailable" "top node metrics data gap"
 assert_contains "$top_outlook" "kubelet persistentvolumeclaims unavailable" "top kubelet PVC data gap"
 
 log "Checking top fails closed when the namespace is missing..."

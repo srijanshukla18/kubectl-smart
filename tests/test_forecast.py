@@ -94,6 +94,61 @@ class TestPredictCapacityIssues:
         predictions = engine.predict_capacity_issues([node], None)
         assert predictions == []
 
+    def test_predict_capacity_issues_current_node_cpu_metrics(self):
+        """Test current metrics-server node CPU pressure is actionable."""
+        engine = ForecastingEngine()
+        node = ResourceRecord(
+            kind=ResourceKind.NODE,
+            name="node-a",
+            uid="node-uid",
+            properties={"status": {"conditions": []}},
+        )
+        metric = ResourceRecord(
+            kind=ResourceKind.NODE,
+            name="node-a",
+            uid="metrics-node-a",
+            properties={
+                "metrics": {
+                    "cpu_percent": "95",
+                    "memory_percent": "40",
+                }
+            },
+        )
+
+        predictions = engine.predict_capacity_issues([node], [metric])
+
+        assert len(predictions) == 1
+        assert predictions[0]["type"] == "node_capacity"
+        assert predictions[0]["metric"] == "cpu"
+        assert predictions[0]["current_utilization"] == 95.0
+
+    def test_predict_capacity_issues_current_node_memory_metrics(self):
+        """Test current metrics-server node memory pressure is actionable."""
+        engine = ForecastingEngine()
+        node = ResourceRecord(
+            kind=ResourceKind.NODE,
+            name="node-a",
+            uid="node-uid",
+            properties={"status": {"conditions": []}},
+        )
+        metric = ResourceRecord(
+            kind=ResourceKind.NODE,
+            name="node-a",
+            uid="metrics-node-a",
+            properties={
+                "metrics": {
+                    "cpu_percent": "20",
+                    "memory_percent": "91%",
+                }
+            },
+        )
+
+        predictions = engine.predict_capacity_issues([node], [metric])
+
+        assert len(predictions) == 1
+        assert predictions[0]["metric"] == "memory"
+        assert predictions[0]["current_utilization"] == 91.0
+
 
 class TestPredictPVCUsage:
     """Tests for PVC usage prediction"""

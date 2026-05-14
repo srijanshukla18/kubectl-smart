@@ -1453,6 +1453,78 @@ class TestTopCommand:
     @pytest.mark.asyncio
     @patch("kubectl_smart.cli.commands.collector_registry")
     @patch("kubectl_smart.cli.commands.parser_registry")
+    async def test_execute_collects_node_inventory_and_metrics(
+        self, mock_parser_registry, mock_collector_registry
+    ):
+        """Test top uses real node inventory plus metrics-server node rows."""
+        node = ResourceRecord(
+            kind=ResourceKind.NODE,
+            name="node-a",
+            uid="node-uid",
+            properties={"status": {"conditions": []}},
+        )
+        node_metrics = ResourceRecord(
+            kind=ResourceKind.NODE,
+            name="node-a",
+            uid="metrics-node-a",
+            properties={
+                "metrics": {
+                    "cpu_percent": "96",
+                    "memory_percent": "30",
+                }
+            },
+        )
+
+        def create_collector(name, **kwargs):
+            resource_type = kwargs.get("resource_type", name)
+            source = f"{name}_{resource_type}"
+            collector = MagicMock()
+            collector.name = source
+            if name == "metrics":
+                async def collect_metrics(received_subject):
+                    metric_source = (
+                        "metrics_node"
+                        if received_subject.kind == ResourceKind.NODE
+                        else "metrics_pods"
+                    )
+                    return RawBlob(data={}, source=metric_source)
+
+                collector.collect = AsyncMock(side_effect=collect_metrics)
+            else:
+                collector.collect = AsyncMock(return_value=RawBlob(data={}, source=source))
+            return collector
+
+        def parse(blob):
+            if blob.source == "get_nodes":
+                return [node]
+            if blob.source == "metrics_node":
+                return [node_metrics]
+            return []
+
+        mock_collector_registry.create.side_effect = create_collector
+        mock_parser_registry.parse.side_effect = parse
+
+        cmd = TopCommand()
+        subject = SubjectCtx(
+            kind=ResourceKind.NAMESPACE, name="default", namespace="default"
+        )
+        result = await cmd.execute(subject)
+
+        assert result.exit_code == 0
+        assert "CAPACITY WARNINGS" in result.output
+        assert "Node/node-a" in result.output
+        assert "cpu" in result.output
+
+        requested = [
+            (call.args[0], call.kwargs.get("resource_type"))
+            for call in mock_collector_registry.create.call_args_list
+        ]
+        assert ("get", "nodes") in requested
+        assert ("metrics", None) in requested
+
+    @pytest.mark.asyncio
+    @patch("kubectl_smart.cli.commands.collector_registry")
+    @patch("kubectl_smart.cli.commands.parser_registry")
     async def test_execute_surfaces_optional_collector_creation_data_gaps(
         self, mock_parser_registry, mock_collector_registry
     ):
@@ -1464,7 +1536,7 @@ class TestTopCommand:
             collector = MagicMock()
             collector.name = f"{name}_{kwargs.get('resource_type', 'generic')}"
             collector.collect = AsyncMock(
-                return_value=MagicMock(data={}, source="test")
+                return_value=RawBlob(data={}, source="test")
             )
             return collector
 

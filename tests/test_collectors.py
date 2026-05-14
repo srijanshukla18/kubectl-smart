@@ -353,6 +353,31 @@ class TestMetricsServer:
 
         assert blob.content_type == "text/plain"
 
+    @pytest.mark.asyncio
+    @patch("asyncio.create_subprocess_exec")
+    @patch("subprocess.run")
+    async def test_metrics_server_collect_all_nodes(self, mock_run, mock_exec):
+        """Test MetricsServer can collect all node metrics without a name."""
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout="/usr/local/bin/kubectl\n", stderr=""
+        )
+        mock_process = AsyncMock()
+        mock_process.returncode = 0
+        mock_process.communicate.return_value = (
+            b"NAME       CPU(cores)   CPU%   MEMORY(bytes)   MEMORY%\nnode-a     900m         95%    4Gi             80%",
+            b"",
+        )
+        mock_exec.return_value = mock_process
+
+        collector = MetricsServer()
+        subject = SubjectCtx(kind=ResourceKind.NODE, name="")
+        blob = await collector.collect(subject)
+        args = mock_exec.call_args.args
+
+        assert blob.content_type == "text/plain"
+        assert args[:3] == ("/usr/local/bin/kubectl", "top", "node")
+        assert "" not in args
+
 
 class TestKubeletMetricsScrape:
     """Tests for KubeletMetricsScrape collector"""
