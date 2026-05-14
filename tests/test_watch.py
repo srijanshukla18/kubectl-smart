@@ -324,7 +324,11 @@ async def test_watch_start_returns_error_code_for_fatal_loop_error(
     capsys,
 ):
     """Watch mode should not report success after the watch loop crashes."""
-    subject = SubjectCtx(kind=ResourceKind.POD, name="api", namespace="default")
+    subject = SubjectCtx(
+        kind=ResourceKind.POD,
+        name="api\x1b[31mred\x1b[0m",
+        namespace="default",
+    )
     watcher = ResourceWatcher(subject, interval_seconds=1)
 
     async def fail_check(*_args, **_kwargs):
@@ -337,5 +341,6 @@ async def test_watch_start_returns_error_code_for_fatal_loop_error(
 
     assert exit_code == 2
     assert "\x1b" not in output
+    assert "Monitoring Pod/default/apired" in output
     assert "Watch error: terminal refresh failed\\rnow" in output
     assert watcher.running is False

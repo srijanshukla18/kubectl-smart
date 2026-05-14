@@ -9,6 +9,7 @@ from kubectl_smart.models import (
     IssueSeverity,
     ResourceKind,
     ResourceRecord,
+    SubjectCtx,
     TopResult,
 )
 from kubectl_smart.renderers.json_renderer import JsonRenderer
@@ -142,6 +143,33 @@ class TestRenderDiagnosis:
         assert "\\rwhile starting" in output
         assert "\\a" in output
         assert "Back-off restart" in output
+
+    def test_render_headers_sanitize_terminal_control_sequences(self):
+        """Test object identity headers cannot emit terminal control sequences."""
+        renderer = TerminalRenderer(colors_enabled=False)
+        subject = SubjectCtx(
+            kind=ResourceKind.POD,
+            name="api\x1b[31mred\x1b[0m",
+            namespace="default",
+        )
+        resource = ResourceRecord(
+            kind=ResourceKind.POD,
+            name="api\x1b[31mred\x1b[0m",
+            uid="pod-uid",
+            namespace="default",
+            status="Running",
+        )
+
+        diagnosis = renderer.render_diagnosis(
+            DiagnosisResult(subject=subject, resource=resource, analysis_duration=1.0)
+        )
+        graph = renderer.render_graph(GraphResult(subject=subject, analysis_duration=1.0))
+        top = renderer.render_top(TopResult(subject=subject, analysis_duration=1.0))
+
+        output = diagnosis + graph + top
+
+        assert "\x1b" not in output
+        assert "apired" in output
 
     def test_render_diagnosis_root_cause_only_is_nonzero(
         self, sample_subject_ctx, sample_resource_record, sample_issue

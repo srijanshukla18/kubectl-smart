@@ -69,10 +69,10 @@ class TerminalRenderer:
             if result.resource:
                 status_style = self._get_status_style(result.resource.status)
                 status = self._display_text(result.resource.status)
-                console.print(f"\n📋 DIAGNOSIS: {result.resource.full_name}")
+                console.print(f"\n📋 DIAGNOSIS: {self._display_text(result.resource.full_name)}")
                 console.print(f"Status: [{status_style}]{status}[/{status_style}]")
             else:
-                console.print(f"\n📋 DIAGNOSIS: {result.subject.full_name}")
+                console.print(f"\n📋 DIAGNOSIS: {self._display_text(result.subject.full_name)}")
                 console.print(
                     f"Status: [red]{self._missing_resource_status(result)}[/red]"
                 )
@@ -149,7 +149,9 @@ class TerminalRenderer:
         console = Console(file=None, width=self.console.size.width)
         
         with console.capture() as capture:
-            console.print(f"\n🔗 DEPENDENCY GRAPH: {result.subject.full_name}")
+            console.print(
+                f"\n🔗 DEPENDENCY GRAPH: {self._display_text(result.subject.full_name)}"
+            )
             
             # ASCII graph representation
             if result.ascii_graph:
@@ -178,7 +180,11 @@ class TerminalRenderer:
         console = Console(file=None, width=self.console.size.width)
         
         with console.capture() as capture:
-            scope = f"namespace {result.subject.name}" if result.subject.name else "cluster"
+            scope = (
+                f"namespace {self._display_text(result.subject.name)}"
+                if result.subject.name
+                else "cluster"
+            )
             console.print(f"\n📈 PREDICTIVE OUTLOOK: {scope}")
             console.print(f"Forecast horizon: {result.forecast_horizon_hours}h")
             

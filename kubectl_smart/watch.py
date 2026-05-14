@@ -87,9 +87,15 @@ class ResourceWatcher:
             renderer = TerminalRenderer()
 
         self.running = True
-        logger.info("Started watching resource", resource=self.subject.full_name)
+        logger.info(
+            "Started watching resource",
+            resource=terminal_plain_text(self.subject.full_name),
+        )
 
-        print(f"\n👁️  WATCH MODE: Monitoring {self.subject.full_name}", flush=True)
+        print(
+            f"\n👁️  WATCH MODE: Monitoring {terminal_plain_text(self.subject.full_name)}",
+            flush=True,
+        )
         print(f"Polling interval: {self.interval_seconds}s", flush=True)
         print("Press Ctrl+C to stop\n", flush=True)
         print("=" * 60, flush=True)
@@ -105,7 +111,7 @@ class ResourceWatcher:
             self.stop()
             return 0
         except Exception as e:
-            logger.error("Watch failed", error=str(e))
+            logger.error("Watch failed", error=terminal_plain_text(e))
             print(f"\n❌ Watch error: {terminal_plain_text(e)}", flush=True)
             self.stop()
             return 2
@@ -115,7 +121,10 @@ class ResourceWatcher:
     def stop(self) -> None:
         """Stop watching"""
         self.running = False
-        logger.info("Stopped watching resource", resource=self.subject.full_name)
+        logger.info(
+            "Stopped watching resource",
+            resource=terminal_plain_text(self.subject.full_name),
+        )
 
     async def _check_resource(self, renderer, output_format: str) -> None:
         """Check resource and detect changes"""
@@ -158,7 +167,7 @@ class ResourceWatcher:
             self.previous_state = current_state
 
         except Exception as e:
-            logger.warning(f"Check failed: {e}")
+            logger.warning(f"Check failed: {terminal_plain_text(e)}")
             event = WatchEvent(
                 timestamp=datetime.now(),
                 event_type="check_failed",
