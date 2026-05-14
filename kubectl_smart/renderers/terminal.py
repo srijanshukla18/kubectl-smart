@@ -58,8 +58,9 @@ class TerminalRenderer:
         with console.capture() as capture:
             if result.resource:
                 status_style = self._get_status_style(result.resource.status)
+                status = escape(str(result.resource.status))
                 console.print(f"\n📋 DIAGNOSIS: {result.resource.full_name}")
-                console.print(f"Status: [{status_style}]{result.resource.status}[/{status_style}]")
+                console.print(f"Status: [{status_style}]{status}[/{status_style}]")
             else:
                 console.print(f"\n📋 DIAGNOSIS: {result.subject.full_name}")
                 console.print(
@@ -90,17 +91,21 @@ class TerminalRenderer:
                 table.add_column("Message", style="white")
                 
                 for event in result.recent_events:
-                    ts = event.properties.get('lastTimestamp') or event.properties.get('firstTimestamp') or "Unknown"
+                    ts = str(
+                        event.properties.get('lastTimestamp')
+                        or event.properties.get('firstTimestamp')
+                        or "Unknown"
+                    )
                     if 'T' in ts: ts = ts.split('T')[1].replace('Z', '')[:8] # formatting hack
                     
-                    e_type = event.properties.get('type', 'Normal')
+                    e_type = str(event.properties.get('type', 'Normal'))
                     type_style = "red" if e_type == 'Warning' else "green"
                     
                     table.add_row(
-                        ts,
-                        f"[{type_style}]{e_type}[/{type_style}]",
-                        event.properties.get('reason', 'Unknown'),
-                        event.properties.get('message', '')
+                        escape(str(ts)),
+                        f"[{type_style}]{escape(str(e_type))}[/{type_style}]",
+                        escape(str(event.properties.get('reason', 'Unknown'))),
+                        escape(str(event.properties.get('message', ''))),
                     )
                 console.print(table)
             
@@ -139,7 +144,7 @@ class TerminalRenderer:
             if result.ascii_graph:
                 console.print()
                 for line in result.ascii_graph.split('\n'):
-                    console.print(line)
+                    console.print(escape(line))
             
             # Summary statistics
             console.print("\n📊 GRAPH STATISTICS")
@@ -178,11 +183,11 @@ class TerminalRenderer:
                 
                 for warning in result.capacity_warnings:
                     table.add_row(
-                        warning.get('resource', 'Unknown'),
-                        warning.get('type', 'Unknown'),
+                        escape(str(warning.get('resource', 'Unknown'))),
+                        escape(str(warning.get('type', 'Unknown'))),
                         f"{warning.get('current_utilization', 0):.1f}%",
                         f"{warning.get('predicted_utilization', 0):.1f}%",
-                        warning.get('suggested_action', 'Monitor')
+                        escape(str(warning.get('suggested_action', 'Monitor'))),
                     )
                 
                 console.print(table)
@@ -199,11 +204,11 @@ class TerminalRenderer:
                 
                 for warning in result.certificate_warnings:
                     table.add_row(
-                        warning.get('resource', 'Unknown'),
-                        warning.get('certificate_type', 'Unknown'),
-                        warning.get('expiry_date', 'Unknown'),
+                        escape(str(warning.get('resource', 'Unknown'))),
+                        escape(str(warning.get('certificate_type', 'Unknown'))),
+                        escape(str(warning.get('expiry_date', 'Unknown'))),
                         str(warning.get('days_until_expiry', 0)),
-                        warning.get('suggested_action', 'Renew')
+                        escape(str(warning.get('suggested_action', 'Renew'))),
                     )
                 
                 console.print(table)
@@ -242,9 +247,9 @@ class TerminalRenderer:
         console = Console(file=None, width=self.console.size.width)
         
         with console.capture() as capture:
-            console.print(f"[red]❌ Error:[/red] {error_msg}")
+            console.print(f"[red]❌ Error:[/red] {escape(error_msg)}")
             if details:
-                console.print(f"[dim]{details}[/dim]")
+                console.print(f"[dim]{escape(details)}[/dim]")
             self._render_data_gaps(console, data_gaps or [])
         
         return capture.get()
@@ -257,7 +262,7 @@ class TerminalRenderer:
             console.print("[red]🔒 RBAC Permission Denied[/red]")
             console.print("\nMissing permissions for:")
             for permission in missing_permissions:
-                console.print(f"  • {permission}")
+                console.print(f"  • {escape(permission)}")
             
             console.print("\n💡 To fix this issue:")
             console.print("  1. Ask your cluster admin for additional permissions")

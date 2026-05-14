@@ -299,6 +299,39 @@ class TestRenderDiagnosis:
 
         assert "[red]not literal[/red]" in output
 
+    def test_render_diagnosis_escapes_status_and_event_markup(
+        self, sample_subject_ctx, sample_resource_record
+    ):
+        """Test status and event evidence are rendered literally."""
+        renderer = TerminalRenderer(colors_enabled=False, width=160)
+        resource = sample_resource_record.model_copy(
+            update={"status": "Running[red]mutated[/red]"}
+        )
+        event = ResourceRecord(
+            kind=ResourceKind.EVENT,
+            name="test-event",
+            uid="event-uid",
+            namespace="default",
+            properties={
+                "lastTimestamp": "2026-05-14T10:11:12Z",
+                "type": "Warning",
+                "reason": "Failed[red]Reason[/red]",
+                "message": "before [yellow]message[/yellow] after",
+            },
+        )
+        result = DiagnosisResult(
+            subject=sample_subject_ctx,
+            resource=resource,
+            recent_events=[event],
+            analysis_duration=1.0,
+        )
+
+        output = renderer.render_diagnosis(result)
+
+        assert "Running[red]mutated[/red]" in output
+        assert "Failed[red]Reason[/red]" in output
+        assert "before [yellow]message[/yellow] after" in output
+
     def test_render_diagnosis_resource_not_found(self, sample_subject_ctx):
         """Test diagnosis rendering when resource not found"""
         renderer = TerminalRenderer(colors_enabled=False)
@@ -401,6 +434,19 @@ class TestRenderGraph:
         assert "DEPENDENCY GRAPH" in output
         assert "DATA GAPS" in output
 
+    def test_render_graph_escapes_ascii_markup(self, sample_subject_ctx):
+        """Test graph lines are rendered literally, not as Rich markup."""
+        renderer = TerminalRenderer(colors_enabled=False)
+        result = GraphResult(
+            subject=sample_subject_ctx,
+            ascii_graph="Pod/test-pod [red]hidden[/red]",
+            analysis_duration=0.1,
+        )
+
+        output = renderer.render_graph(result)
+
+        assert "Pod/test-pod [red]hidden[/red]" in output
+
 
 class TestRenderTop:
     """Tests for render_top method"""
@@ -441,6 +487,30 @@ class TestRenderTop:
         assert "worker-1" in output
         assert "95.0%" in output
 
+    def test_render_top_escapes_capacity_warning_markup(self, sample_subject_ctx):
+        """Test capacity warning table values are rendered literally."""
+        renderer = TerminalRenderer(colors_enabled=False, width=180)
+        result = TopResult(
+            subject=sample_subject_ctx,
+            capacity_warnings=[
+                {
+                    "resource": "Node/[red]worker-1[/red]",
+                    "type": "node_[yellow]pressure[/yellow]",
+                    "current_utilization": 85.0,
+                    "predicted_utilization": 95.0,
+                    "suggested_action": "Add [green]nodes[/green]",
+                }
+            ],
+            forecast_horizon_hours=48,
+            analysis_duration=1.0,
+        )
+
+        output = renderer.render_top(result)
+
+        assert "Node/[red]worker-1[/red]" in output
+        assert "node_[yellow]pressure[/yellow]" in output
+        assert "Add [green]nodes[/green]" in output
+
     def test_render_top_with_certificate_warnings(self, sample_subject_ctx):
         """Test top rendering with certificate warnings"""
         renderer = TerminalRenderer(colors_enabled=False)
@@ -463,6 +533,31 @@ class TestRenderTop:
         assert "CERTIFICATE WARNINGS" in output
         assert "tls-cert" in output
         assert "10" in output
+
+    def test_render_top_escapes_certificate_warning_markup(self, sample_subject_ctx):
+        """Test certificate warning table values are rendered literally."""
+        renderer = TerminalRenderer(colors_enabled=False, width=200)
+        result = TopResult(
+            subject=sample_subject_ctx,
+            certificate_warnings=[
+                {
+                    "resource": "Secret/[red]tls-cert[/red]",
+                    "certificate_type": "tls_[yellow]secret[/yellow]",
+                    "expiry_date": "2026-[blue]05[/blue]-15",
+                    "days_until_expiry": 1,
+                    "suggested_action": "Renew [green]certificate[/green]",
+                }
+            ],
+            forecast_horizon_hours=48,
+            analysis_duration=1.0,
+        )
+
+        output = renderer.render_top(result)
+
+        assert "Secret/[red]tls-cert[/red]" in output
+        assert "tls_[yellow]secret[/yellow]" in output
+        assert "2026-[blue]05[/blue]-15" in output
+        assert "Renew [green]certificate[/green]" in output
 
     def test_render_top_no_warnings(self, sample_subject_ctx):
         """Test top rendering with no warnings"""
@@ -510,6 +605,17 @@ class TestRenderError:
         assert "DATA GAPS" in output
         assert "get secrets unavailable (rbac): forbidden" in output
 
+    def test_render_error_escapes_markup(self):
+        """Test error messages and details are rendered literally."""
+        renderer = TerminalRenderer(colors_enabled=False)
+        output = renderer.render_error(
+            "Main [red]error[/red]",
+            "Detail [yellow]context[/yellow]",
+        )
+
+        assert "Main [red]error[/red]" in output
+        assert "Detail [yellow]context[/yellow]" in output
+
 
 class TestRenderRbacError:
     """Tests for render_rbac_error method"""
@@ -530,6 +636,13 @@ class TestRenderRbacError:
 
         assert "cluster admin" in output
         assert "kubectl auth can-i" in output
+
+    def test_render_rbac_error_escapes_permission_markup(self):
+        """Test RBAC permission strings are rendered literally."""
+        renderer = TerminalRenderer(colors_enabled=False)
+        output = renderer.render_rbac_error(["get pods [red]secret[/red]"])
+
+        assert "get pods [red]secret[/red]" in output
 
 
 class TestHelperMethods:
