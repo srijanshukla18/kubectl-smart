@@ -51,14 +51,15 @@ during a real Sev-1 without skepticism.
 | Live metrics-server behavior | `metrics-live-smoke.sh` creates a throwaway kind cluster, installs metrics-server, verifies `kubectl top node`, waits for pod metrics, and checks `kubectl-smart top` does not report pod/node metrics data gaps |
 | Provider-style compatibility | `provider-compat-smoke.sh` is read-only, requires an explicit context, cross-checks direct `kubectl top` availability against `kubectl-smart top` data gaps, and runs `diag`/`graph` against an existing Pod when present |
 | Metrics RBAC guidance | `tests/test_collectors.py` pod-vs-node `metrics.k8s.io` checks; commit `9d6348d Clarify metrics RBAC checks` |
+| Metrics warmup guidance | `tests/test_collectors.py::TestCollectorBase::test_create_failure_blob_records_metrics_not_ready_check`; commit `62254a4 Clarify metrics warmup gaps` |
 | Node context collector failure honesty | `tests/test_commands.py` node context creation/runtime/parse gap tests; commit `ca006da Cover node context data gaps` |
 | Clean installed artifact | `uv build --wheel` produced `kubectl_smart-0.1.0-py3-none-any.whl`; fresh temp venv `uv pip install` succeeded; installed `kubectl-smart --version`, `--help`, and `top default --context kind-kubectl-smart-demo --timeout 2` ran successfully |
-| Current quality gates | `uv run --extra dev pytest --cov=kubectl_smart --cov-report=term-missing` -> `517 passed`, `88%`; ruff gate passed; warning-as-error pytest passed; `demo-smoke.sh` passed; `test.sh` -> `54 passed, 0 failed` |
+| Current quality gates | `uv run --extra dev pytest --cov=kubectl_smart --cov-report=term-missing` -> `518 passed`, `88%`; ruff gate passed; warning-as-error pytest passed; `demo-smoke.sh` passed; `test.sh` -> `54 passed, 0 failed` |
 
 ## Current Evidence Snapshot
 
-- Unit and coverage gate: `517 passed`, `88%`.
-- Warning-as-error gate: `517 passed`.
+- Unit and coverage gate: `518 passed`, `88%`.
+- Warning-as-error gate: `518 passed`.
 - Lint gate: `uv run --frozen --extra dev ruff check kubectl_smart tests --select F,B,C4 --ignore B904` passed.
 - Whitespace gate: `git diff --check` passed.
 - Demo smoke: `KUBECTL_SMART_CONTEXT=kind-kubectl-smart-demo KUBECTL_SMART_CMD=./kubectl-smart ./demo-smoke.sh` passed.
