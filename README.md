@@ -263,6 +263,9 @@ KUBECTL_SMART_CMD=kubectl-smart ./test.sh
 # Optional: create a throwaway kind cluster and verify live metrics-server behavior
 ./metrics-live-smoke.sh
 
+# Optional: run a read-only compatibility smoke against an explicit context
+KUBECTL_SMART_CONTEXT=kind-kubectl-smart-demo NAMESPACE=kube-system ./provider-compat-smoke.sh
+
 # Test individual commands
 kubectl-smart --help
 kubectl-smart diag --help
@@ -278,6 +281,9 @@ Local demo safety:
 - `metrics-live-smoke.sh` creates and deletes a separate throwaway kind cluster
   so metrics-server validation does not alter the demo cluster or its
   intentional failures.
+- `provider-compat-smoke.sh` is read-only and requires an explicit context. It
+  cross-checks direct `kubectl top` availability against `kubectl-smart top`
+  data gaps and runs `diag`/`graph` on an existing Pod when one is available.
 - `test.sh` exits nonzero if any integration check fails, so it is safe to use
   as a local gate instead of a best-effort transcript.
 - `demo-smoke.sh` passes explicit contexts for both the admin demo context and

@@ -49,6 +49,7 @@ during a real Sev-1 without skepticism.
 | Kubelet PVC happy path | `tests/test_cli.py::TestTopCommand::test_top_metrics_happy_path_with_fake_kubectl`; `tests/test_commands.py::TestTopCommand::test_execute_merges_kubelet_pvc_metrics_before_forecast` |
 | Kubelet PVC missing stats honesty | `demo-smoke.sh`; `tests/test_commands.py::TestTopCommand::test_execute_records_missing_pvc_metric_gap` |
 | Live metrics-server behavior | `metrics-live-smoke.sh` creates a throwaway kind cluster, installs metrics-server, verifies `kubectl top node`, waits for pod metrics, and checks `kubectl-smart top` does not report pod/node metrics data gaps |
+| Provider-style compatibility | `provider-compat-smoke.sh` is read-only, requires an explicit context, cross-checks direct `kubectl top` availability against `kubectl-smart top` data gaps, and runs `diag`/`graph` against an existing Pod when present |
 | Metrics RBAC guidance | `tests/test_collectors.py` pod-vs-node `metrics.k8s.io` checks; commit `9d6348d Clarify metrics RBAC checks` |
 | Node context collector failure honesty | `tests/test_commands.py` node context creation/runtime/parse gap tests; commit `ca006da Cover node context data gaps` |
 | Clean installed artifact | `uv build --wheel` produced `kubectl_smart-0.1.0-py3-none-any.whl`; fresh temp venv `uv pip install` succeeded; installed `kubectl-smart --version`, `--help`, and `top default --context kind-kubectl-smart-demo --timeout 2` ran successfully |
@@ -67,6 +68,11 @@ during a real Sev-1 without skepticism.
   top pods` returning pod metrics, `kubectl-smart top default` with no
   metrics-server data gaps, and a PVC-backed namespace reporting only the
   missing kubelet PVC volume-stats gap.
+- Provider compatibility smoke:
+  `KUBECTL_SMART_CONTEXT=kind-kubectl-smart-demo NAMESPACE=kube-system KUBECTL_SMART_CMD=./kubectl-smart ./provider-compat-smoke.sh`
+  passed. Evidence included direct `kubectl top` reporting Metrics API absence,
+  `kubectl-smart top` reporting matching metrics data gaps, and `diag`/`graph`
+  succeeding against an existing CoreDNS Pod.
 - Packaging smoke: `uv build --wheel` succeeded, the wheel installed into a
   fresh temp venv with `uv pip install`, and the installed CLI ran `--version`,
   `--help`, and `top default --context kind-kubectl-smart-demo --timeout 2`.
@@ -78,13 +84,14 @@ during a real Sev-1 without skepticism.
   PVC; PVC volume-stat happy path is covered by fake `kubectl` and command
   tests, while the live kind run confirmed the missing-stats data gap.
 - No production-provider matrix has been run across EKS, GKE, AKS, OpenShift,
-  and restricted enterprise RBAC variants.
+  and restricted enterprise RBAC variants. `provider-compat-smoke.sh` is ready
+  to collect those results, but this audit has only run it against local kind.
 - Some rare display and exception branches remain uncovered, though the main
   incident flows and degradation paths are covered.
 
 ## Completion Decision
 
-Do not mark the objective complete yet. The tool is substantially hardened and
-demo-ready, but "without skepticism" still needs either a real metrics-server
-cluster validation or a small provider-style compatibility pass before calling
-the Sev-1 trust objective achieved.
+Do not mark the objective complete yet. The tool is substantially hardened,
+demo-ready, and has live metrics-server validation on kind. The remaining
+"without skepticism" gap is production-provider diversity plus a live cluster
+that exposes kubelet `kubelet_volume_stats_*` for PVC usage.
