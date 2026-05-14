@@ -5,7 +5,7 @@
 - Unit test command: `uv run --extra dev pytest`
 - Coverage command: `uv run --extra dev pytest --cov=kubectl_smart --cov-report=term-missing`
 - Local integration command: `KUBECTL_SMART_CONTEXT=kind-kubectl-smart-demo KUBECTL_SMART_CMD=./kubectl-smart ./test.sh`
-- Latest local result: `510 passed`
+- Latest local result: `512 passed`
 - Latest measured coverage: `87%`
 - Latest local integration result: `54 passed, 0 failed`
 
@@ -27,6 +27,8 @@ coverage command above when working on test depth.
 - Cloud-provider kube context names and malformed context rejection
 - Collector creation failures surfaced as command data gaps
 - Kubelet node-proxy scrape failures surfaced as capacity data gaps
+- Metrics-server RBAC data gaps suggest pod-vs-node specific
+  `metrics.k8s.io` permission checks
 - Graph relationship extraction and traversal
 - Graph not-found messaging distinguishes incomplete target inventory from
   confirmed absence in a complete graph collection

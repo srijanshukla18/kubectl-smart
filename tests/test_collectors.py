@@ -131,6 +131,46 @@ class TestCollectorBase:
             "kubectl auth can-i get pods --subresource=log -n default"
         )
 
+    def test_create_failure_blob_records_pod_metrics_rbac_check(self):
+        """Test pod metrics RBAC gaps suggest the metrics.k8s.io pod resource."""
+        collector = MetricsServer()
+        subject = SubjectCtx(
+            kind=ResourceKind.NAMESPACE,
+            name="default",
+            namespace="default",
+        )
+        blob = collector._create_failure_blob(
+            {},
+            "text/plain",
+            RBACError("RBAC permission denied: cannot get pods.metrics.k8s.io"),
+            subject,
+            operation="metrics",
+            resource_type="pods",
+        )
+
+        assert blob.metadata["category"] == "rbac"
+        assert blob.metadata["suggested_action"] == (
+            "kubectl auth can-i get pods.metrics.k8s.io -n default"
+        )
+
+    def test_create_failure_blob_records_node_metrics_rbac_check(self):
+        """Test node metrics RBAC gaps suggest the metrics.k8s.io node resource."""
+        collector = MetricsServer()
+        subject = SubjectCtx(kind=ResourceKind.NODE, name="")
+        blob = collector._create_failure_blob(
+            {},
+            "text/plain",
+            RBACError("RBAC permission denied: cannot get nodes.metrics.k8s.io"),
+            subject,
+            operation="metrics",
+            resource_type="nodes",
+        )
+
+        assert blob.metadata["category"] == "rbac"
+        assert blob.metadata["suggested_action"] == (
+            "kubectl auth can-i get nodes.metrics.k8s.io"
+        )
+
 
 class TestKubectlGet:
     """Tests for KubectlGet collector"""

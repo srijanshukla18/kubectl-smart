@@ -323,7 +323,11 @@ class Collector(ABC):
         if operation in {"get", "describe"} and resource_type:
             return f"kubectl auth can-i get {resource_type}{namespace_arg}"
         if operation == "metrics":
-            return f"kubectl auth can-i get pods.metrics.k8s.io{namespace_arg}"
+            metrics_resource = "nodes" if resource_type == "nodes" else "pods"
+            return (
+                f"kubectl auth can-i get "
+                f"{metrics_resource}.metrics.k8s.io{namespace_arg}"
+            )
         if operation == "kubelet":
             return "kubectl auth can-i get nodes/proxy"
         return None
