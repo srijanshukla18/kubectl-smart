@@ -100,13 +100,17 @@ kubectl-smart top production
 kubectl-smart top kube-system --horizon=24
 kubectl-smart top production --timeout 3
 ```
-**Purpose**: 48h forecast of capacity issues and certificate expiry
+**Purpose**: 48h outlook for capacity issues and certificate expiry
 
 Data sources and behavior:
-- CPU/Memory: metrics-server (`kubectl top`) snapshot; forecasts improve across runs using a small local cache.
+- CPU/Memory: metrics-server (`kubectl top`) snapshots for namespace pod
+  usage and current node CPU/memory pressure. If node utilization is already
+  above the warning threshold, `top` surfaces it immediately.
 - PVC Disk usage: kubelet Prometheus metrics (kubelet_volume_stats_* via API
-  proxy). If PVCs exist but usable volume stats are unavailable, output records
-  an explicit data gap instead of treating storage usage as clean.
+  proxy). PVC utilization samples are cached locally so repeated runs can
+  forecast short-term storage growth. If PVCs exist but usable volume stats are
+  unavailable, output records an explicit data gap instead of treating storage
+  usage as clean.
 - Certificate expiry: parses Secret `tls.crt` via X.509; warns when ≤ 14 days.
   If Secret inventory is available, also warns when an Ingress references a
   missing TLS Secret. If Secret collection is blocked, the missing-reference
@@ -118,8 +122,11 @@ Data sources and behavior:
   the exact `kubectl get namespace` not-found evidence shown in `DATA GAPS`.
 
 Requirements and graceful degradation:
-- For full predictions, ensure metrics-server is installed and kubelet metrics accessible via API proxy.
-- If metrics-server is absent or kubelet metrics are blocked by RBAC, `top` still runs and prints a note indicating limited signals.
+- For full predictions, ensure metrics-server is installed and kubelet metrics
+  are accessible via API proxy.
+- If metrics-server is absent or kubelet metrics are blocked by RBAC, `top`
+  still runs and prints explicit `DATA GAPS` for the missing pod metrics, node
+  metrics, or PVC volume stats.
 - Use `--timeout <seconds>` or `KUBECTL_SMART_TIMEOUT=<seconds>` to tune each
   kubectl collector timeout for slow or degraded API servers.
 
@@ -199,7 +206,14 @@ Forecast horizon: 48h
 
 ⏱️  Analysis completed in 1.1s
 
-[Note] Some signals (PVC disk usage, CPU/memory trends) need metrics-server and kubelet metrics. If unavailable, `top` succeeds but shows limited output.
+⚪ DATA GAPS (3)
+Analysis used the available signals; these collectors were incomplete:
+  • metrics pods unavailable (unavailable): error: Metrics API not available |
+    Check: Install or enable metrics-server for capacity forecasting
+  • metrics nodes unavailable (unavailable): error: Metrics API not available |
+    Check: Install or enable metrics-server for capacity forecasting
+  • kubelet persistentvolumeclaims unavailable (rbac): RBAC permission denied:
+    cannot get nodes/proxy | Check: kubectl auth can-i get nodes/proxy
 ```
 
 ## 🔧 Architecture

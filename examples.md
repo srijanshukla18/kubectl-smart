@@ -296,7 +296,14 @@ Forecast horizon: 48h
 
 ⏱️  Analysis completed in 1.1s
 
-[Note] Some signals (PVC disk usage, CPU/memory trends) need metrics-server and kubelet metrics. If unavailable, `top` succeeds but shows limited output.
+⚪ DATA GAPS (3)
+Analysis used the available signals; these collectors were incomplete:
+  • metrics pods unavailable (unavailable): error: Metrics API not available |
+    Check: Install or enable metrics-server for capacity forecasting
+  • metrics nodes unavailable (unavailable): error: Metrics API not available |
+    Check: Install or enable metrics-server for capacity forecasting
+  • kubelet persistentvolumeclaims unavailable (rbac): RBAC permission denied:
+    cannot get nodes/proxy | Check: kubectl auth can-i get nodes/proxy
 ```
 
 ### Different Namespaces
