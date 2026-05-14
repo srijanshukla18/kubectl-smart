@@ -307,45 +307,57 @@ class DiagCommand(BaseCommand):
             resource_types.append("replicasets")
 
         collectors = []
-        subjects = []
         list_subject = subject.model_copy(update={"name": ""})
 
         for resource_type in resource_types:
             try:
-                collectors.append(self._create_collector("get", resource_type=resource_type))
-                subjects.append(list_subject)
+                collector = self._create_collector("get", resource_type=resource_type)
+                collectors.append((f"get {resource_type}", collector, list_subject))
             except Exception as e:
                 logger.warning("Failed to create controller context collector", resource_type=resource_type, error=str(e))
                 self._record_collector_creation_gap("get", e, resource_type)
 
         try:
-            collectors.append(self._create_collector("events"))
-            subjects.append(list_subject)
+            collector = self._create_collector("events")
+            collectors.append(("events events", collector, list_subject))
         except Exception as e:
             logger.warning("Failed to create controller event collector", error=str(e))
             self._record_collector_creation_gap("events", e, "events")
 
+        if not collectors:
+            return []
+
         blobs = await asyncio.gather(
             *[
                 collector.collect(collector_subject)
-                for collector, collector_subject in zip(collectors, subjects)
+                for _, collector, collector_subject in collectors
             ],
             return_exceptions=True,
         )
 
         resources = []
-        for i, blob in enumerate(blobs):
+        for (collector_label, collector, _), blob in zip(collectors, blobs):
             if isinstance(blob, Exception):
-                logger.warning("Controller context collector failed", collector=collectors[i].name, error=str(blob))
-                self._record_exception_gap(collectors[i].name, blob)
+                logger.warning(
+                    "Controller context collector failed",
+                    collector=collector.name,
+                    error=str(blob),
+                )
+                self._record_exception_gap(collector_label, blob)
                 continue
 
             self._record_blob_gap(blob)
             try:
                 resources.extend(parser_registry.parse(blob))
             except Exception as e:
-                logger.warning("Failed to parse controller context", collector=collectors[i].name, error=str(e))
-                self._add_data_gap(f"{collectors[i].name} output could not be parsed: {str(e).splitlines()[0]}")
+                logger.warning(
+                    "Failed to parse controller context",
+                    collector=collector.name,
+                    error=str(e),
+                )
+                self._add_data_gap(
+                    f"{collector_label} output could not be parsed: {str(e).splitlines()[0]}"
+                )
 
         return resources
 
@@ -366,43 +378,57 @@ class DiagCommand(BaseCommand):
         log_targets = log_targets[:3]
 
         collectors = []
-        subjects = []
         for pod in log_targets:
             try:
-                collectors.append(self._create_collector("logs"))
-                subjects.append(
+                collector = self._create_collector("logs")
+                collectors.append((
+                    "logs pods",
+                    collector,
                     SubjectCtx(
                         kind=ResourceKind.POD,
                         name=pod.name,
                         namespace=pod.namespace,
                         context=subject.context,
-                    )
-                )
+                    ),
+                ))
             except Exception as e:
                 logger.warning("Failed to create child pod log collector", pod=pod.name, error=str(e))
                 self._record_collector_creation_gap("logs", e, "pods")
 
+        if not collectors:
+            return []
+
         blobs = await asyncio.gather(
             *[
                 collector.collect(collector_subject)
-                for collector, collector_subject in zip(collectors, subjects)
+                for _, collector, collector_subject in collectors
             ],
             return_exceptions=True,
         )
 
         resources = []
-        for i, blob in enumerate(blobs):
+        for (collector_label, collector, _), blob in zip(collectors, blobs):
             if isinstance(blob, Exception):
-                logger.warning("Child pod log collector failed", collector=collectors[i].name, error=str(blob))
-                self._record_exception_gap(collectors[i].name, blob)
+                logger.warning(
+                    "Child pod log collector failed",
+                    collector=collector.name,
+                    error=str(blob),
+                )
+                self._record_exception_gap(collector_label, blob)
                 continue
 
             self._record_blob_gap(blob)
             try:
                 resources.extend(parser_registry.parse(blob))
             except Exception as e:
-                logger.warning("Failed to parse child pod logs", collector=collectors[i].name, error=str(e))
-                self._add_data_gap(f"{collectors[i].name} output could not be parsed: {str(e).splitlines()[0]}")
+                logger.warning(
+                    "Failed to parse child pod logs",
+                    collector=collector.name,
+                    error=str(e),
+                )
+                self._add_data_gap(
+                    f"{collector_label} output could not be parsed: {str(e).splitlines()[0]}"
+                )
 
         return resources
 

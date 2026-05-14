@@ -832,6 +832,134 @@ class TestDiagCommand:
         assert any("Inspect child pod" in action for action in result.suggested_actions)
         assert "Check logs: kubectl logs checkout-api -n default" not in result.suggested_actions
 
+    @pytest.mark.asyncio
+    @patch("kubectl_smart.cli.commands.collector_registry")
+    @patch("kubectl_smart.cli.commands.parser_registry")
+    async def test_execute_raw_controller_context_collect_failure_is_data_gap(
+        self, mock_parser_registry, mock_collector_registry
+    ):
+        """Test controller diagnosis keeps resource-typed context collect gaps."""
+        deployment = ResourceRecord(
+            kind=ResourceKind.DEPLOYMENT,
+            name="checkout-api",
+            uid="deploy-uid",
+            namespace="default",
+            status="Available",
+            properties={"spec": {"selector": {"matchLabels": {"app": "checkout"}}}},
+        )
+
+        def create_collector(name, **kwargs):
+            resource_type = kwargs.get("resource_type", name)
+            collector = MagicMock()
+            collector.name = f"{name}_{resource_type}"
+            if resource_type == "pods":
+                collector.collect = AsyncMock(
+                    side_effect=RuntimeError("apiserver timeout")
+                )
+            else:
+                collector.collect = AsyncMock(
+                    return_value=RawBlob(data={}, source=f"{name}_{resource_type}")
+                )
+            return collector
+
+        def parse(blob):
+            if blob.source == "get_deployment":
+                return [deployment]
+            return []
+
+        mock_collector_registry.create.side_effect = create_collector
+        mock_parser_registry.parse.side_effect = parse
+
+        cmd = DiagCommand()
+        subject = SubjectCtx(
+            kind=ResourceKind.DEPLOYMENT,
+            name="checkout-api",
+            namespace="default",
+        )
+        result = await cmd.execute_raw(subject)
+
+        assert result.exit_code == 0
+        assert result.resource == deployment
+        assert "get pods failed: apiserver timeout" in result.data_gaps
+        assert not any("get_pods failed" in gap for gap in result.data_gaps)
+
+    @pytest.mark.asyncio
+    @patch("kubectl_smart.cli.commands.collector_registry")
+    @patch("kubectl_smart.cli.commands.parser_registry")
+    async def test_execute_raw_controller_context_parse_failure_is_data_gap(
+        self, mock_parser_registry, mock_collector_registry
+    ):
+        """Test controller diagnosis labels context parse gaps by resource."""
+        deployment = ResourceRecord(
+            kind=ResourceKind.DEPLOYMENT,
+            name="checkout-api",
+            uid="deploy-uid",
+            namespace="default",
+            status="Available",
+            properties={"spec": {"selector": {"matchLabels": {"app": "checkout"}}}},
+        )
+
+        def create_collector(name, **kwargs):
+            resource_type = kwargs.get("resource_type", name)
+            collector = MagicMock()
+            collector.name = f"{name}_{resource_type}"
+            collector.collect = AsyncMock(
+                return_value=RawBlob(data={}, source=f"{name}_{resource_type}")
+            )
+            return collector
+
+        def parse(blob):
+            if blob.source == "get_deployment":
+                return [deployment]
+            if blob.source == "get_replicasets":
+                raise ValueError("malformed replicaset list")
+            return []
+
+        mock_collector_registry.create.side_effect = create_collector
+        mock_parser_registry.parse.side_effect = parse
+
+        cmd = DiagCommand()
+        subject = SubjectCtx(
+            kind=ResourceKind.DEPLOYMENT,
+            name="checkout-api",
+            namespace="default",
+        )
+        result = await cmd.execute_raw(subject)
+
+        assert result.exit_code == 0
+        assert result.resource == deployment
+        assert "get replicasets output could not be parsed: malformed replicaset list" in result.data_gaps
+        assert not any("get_replicasets output could not be parsed" in gap for gap in result.data_gaps)
+
+    @pytest.mark.asyncio
+    @patch("kubectl_smart.cli.commands.collector_registry")
+    async def test_collect_child_pod_logs_failure_is_data_gap(
+        self, mock_collector_registry
+    ):
+        """Test child pod log collection failures use Kubernetes resource labels."""
+        pod = ResourceRecord(
+            kind=ResourceKind.POD,
+            name="checkout-api-0",
+            uid="pod-uid",
+            namespace="default",
+            status="CrashLoopBackOff",
+        )
+
+        collector = MagicMock()
+        collector.name = "kubectl_logs"
+        collector.collect = AsyncMock(side_effect=RuntimeError("forbidden"))
+        mock_collector_registry.create.return_value = collector
+
+        cmd = DiagCommand()
+        subject = SubjectCtx(
+            kind=ResourceKind.STATEFULSET,
+            name="checkout-api",
+            namespace="default",
+        )
+        resources = await cmd._collect_child_pod_logs(subject, [pod])
+
+        assert resources == []
+        assert cmd.data_gaps == ["logs pods failed: forbidden"]
 
 class TestGraphCommand:
     """Tests for GraphCommand class"""
