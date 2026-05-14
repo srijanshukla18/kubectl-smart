@@ -4,7 +4,7 @@
 
 - Unit test command: `uv run --extra dev pytest`
 - Coverage command: `uv run --extra dev pytest --cov=kubectl_smart --cov-report=term-missing`
-- Latest local result: `482 passed`
+- Latest local result: `483 passed`
 - Latest measured coverage: `85%`
 
 Coverage is measured, not estimated. The default `pytest` command does not enforce
@@ -81,6 +81,7 @@ coverage command above when working on test depth.
 - Watch-state extraction for warning, critical, and unexpected exit codes,
   diagnosis-detail change detection, and data-gap appearance/resolution
 - Watch mode exits nonzero when the watch loop itself fails
+- Watch mode sanitizes ANSI/control sequences in fatal errors and change lines
 - Watch mode records failed checks and recovery in the event stream/summary
 
 ## Known Coverage Gaps

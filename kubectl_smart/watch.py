@@ -17,6 +17,7 @@ from typing import Optional, List, Dict, Any, Callable
 import structlog
 
 from .models import SubjectCtx
+from .renderers.terminal import terminal_plain_text
 
 logger = structlog.get_logger(__name__)  # type: ignore[attr-defined]
 
@@ -105,7 +106,7 @@ class ResourceWatcher:
             return 0
         except Exception as e:
             logger.error("Watch failed", error=str(e))
-            print(f"\n❌ Watch error: {e}", flush=True)
+            print(f"\n❌ Watch error: {terminal_plain_text(e)}", flush=True)
             self.stop()
             return 2
 
@@ -347,16 +348,22 @@ class ResourceWatcher:
             icon = self._get_event_icon(change.event_type)
 
             if change.event_type == "status_change":
-                print(f"\n{icon} [{timestamp}] Status: {change.details['previous']} → {change.details['current']}", flush=True)
+                previous = terminal_plain_text(change.details["previous"])
+                current = terminal_plain_text(change.details["current"])
+                print(f"\n{icon} [{timestamp}] Status: {previous} → {current}", flush=True)
 
             elif change.event_type == "new_issue":
-                issue = change.details.get('issue') or change.details.get('current')
+                issue = terminal_plain_text(
+                    change.details.get('issue') or change.details.get('current')
+                )
                 score = change.details.get('score', '')
                 score_str = f" (score: {score:.1f})" if score else ""
                 print(f"\n{icon} [{timestamp}] New issue: {issue}{score_str}", flush=True)
 
             elif change.event_type == "issue_resolved":
-                issue = change.details.get('issue') or change.details.get('previous')
+                issue = terminal_plain_text(
+                    change.details.get('issue') or change.details.get('previous')
+                )
                 print(f"\n{icon} [{timestamp}] Resolved: {issue}", flush=True)
 
             elif change.event_type == "score_change":
@@ -365,19 +372,24 @@ class ResourceWatcher:
                 print(f"\n{icon} [{timestamp}] Score: {change.details['previous_score']:.1f} → {change.details['current_score']:.1f} ({direction}{abs(delta):.1f})", flush=True)
 
             elif change.event_type == "root_cause_change":
-                print(f"\n{icon} [{timestamp}] Root cause changed: {change.details['previous']} → {change.details['current']}", flush=True)
+                previous = terminal_plain_text(change.details["previous"])
+                current = terminal_plain_text(change.details["current"])
+                print(f"\n{icon} [{timestamp}] Root cause changed: {previous} → {current}", flush=True)
 
             elif change.event_type == "data_gap_change":
                 print(f"\n{icon} [{timestamp}] Data gaps: {change.details['previous_count']} → {change.details['current_count']}", flush=True)
 
             elif change.event_type == "data_gap_detected":
-                print(f"\n{icon} [{timestamp}] Data gap detected: {change.details['gap']}", flush=True)
+                gap = terminal_plain_text(change.details["gap"])
+                print(f"\n{icon} [{timestamp}] Data gap detected: {gap}", flush=True)
 
             elif change.event_type == "data_gap_resolved":
-                print(f"\n{icon} [{timestamp}] Data gap resolved: {change.details['gap']}", flush=True)
+                gap = terminal_plain_text(change.details["gap"])
+                print(f"\n{icon} [{timestamp}] Data gap resolved: {gap}", flush=True)
 
             elif change.event_type == "check_failed":
-                print(f"\n{icon} [{timestamp}] Check failed: {change.details['error']}", flush=True)
+                error = terminal_plain_text(change.details["error"])
+                print(f"\n{icon} [{timestamp}] Check failed: {error}", flush=True)
 
             elif change.event_type == "check_recovered":
                 print(f"\n{icon} [{timestamp}] Check recovered", flush=True)

@@ -1,5 +1,7 @@
 """Tests for kubectl_smart/watch.py."""
 
+from datetime import datetime
+
 import pytest
 
 from kubectl_smart.cli.commands import CommandResult
@@ -11,7 +13,7 @@ from kubectl_smart.models import (
     ResourceRecord,
     SubjectCtx,
 )
-from kubectl_smart.watch import ResourceWatcher
+from kubectl_smart.watch import ResourceWatcher, WatchEvent
 
 
 def test_watch_state_preserves_warning_exit_code():
@@ -101,6 +103,34 @@ def test_watch_detects_data_gap_changes(capsys):
     assert any(change.event_type == "data_gap_detected" for change in changes)
     assert "Data gaps: 0" in output
     assert "Data gap detected: logs pods unavailable" in output
+
+
+def test_watch_print_changes_sanitizes_control_sequences(capsys):
+    """Watch change lines should not emit terminal control sequences."""
+    subject = SubjectCtx(kind=ResourceKind.POD, name="api", namespace="default")
+    watcher = ResourceWatcher(subject)
+    watcher._print_changes(
+        [
+            WatchEvent(
+                timestamp=datetime.now(),
+                event_type="new_issue",
+                resource=subject.full_name,
+                details={"issue": "Log \x1b[31mErrors\x1b[0m\rInjected"},
+            ),
+            WatchEvent(
+                timestamp=datetime.now(),
+                event_type="data_gap_detected",
+                resource=subject.full_name,
+                details={"gap": "logs \x1b[31mblocked\x1b[0m\a"},
+            ),
+        ]
+    )
+
+    output = capsys.readouterr().out
+
+    assert "\x1b" not in output
+    assert "Log Errors\\rInjected" in output
+    assert "logs blocked\\a" in output
 
 
 @pytest.mark.asyncio
@@ -298,7 +328,7 @@ async def test_watch_start_returns_error_code_for_fatal_loop_error(
     watcher = ResourceWatcher(subject, interval_seconds=1)
 
     async def fail_check(*_args, **_kwargs):
-        raise RuntimeError("terminal refresh failed")
+        raise RuntimeError("terminal \x1b[31mrefresh\x1b[0m failed\rnow")
 
     monkeypatch.setattr(watcher, "_check_resource", fail_check)
 
@@ -306,5 +336,6 @@ async def test_watch_start_returns_error_code_for_fatal_loop_error(
     output = capsys.readouterr().out
 
     assert exit_code == 2
-    assert "Watch error: terminal refresh failed" in output
+    assert "\x1b" not in output
+    assert "Watch error: terminal refresh failed\\rnow" in output
     assert watcher.running is False
