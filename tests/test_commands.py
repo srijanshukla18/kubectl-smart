@@ -1160,6 +1160,110 @@ class TestTopCommand:
         assert result.exit_code == 0
         assert captured["secret_inventory_complete"] is False
 
+    @pytest.mark.asyncio
+    @patch("kubectl_smart.cli.commands.collector_registry")
+    @patch("kubectl_smart.cli.commands.parser_registry")
+    async def test_execute_marks_secret_inventory_incomplete_on_secret_collect_failure(
+        self, mock_parser_registry, mock_collector_registry
+    ):
+        """Test failed Secret collection keeps certificate forecasts qualified."""
+        captured = {}
+
+        class FakeForecastingEngine:
+            def predict_capacity_issues(self, resources, metrics_data):
+                return []
+
+            def predict_certificate_expiry(
+                self,
+                resources,
+                secret_inventory_complete=True,
+            ):
+                captured["secret_inventory_complete"] = secret_inventory_complete
+                return []
+
+        def create_collector(name, **kwargs):
+            resource_type = kwargs.get("resource_type", "generic")
+            collector = MagicMock()
+            collector.name = f"{name}_{resource_type}"
+            if resource_type == "secrets":
+                collector.collect = AsyncMock(
+                    side_effect=RuntimeError("apiserver timeout")
+                )
+            else:
+                collector.collect = AsyncMock(
+                    return_value=RawBlob(
+                        data={},
+                        source=f"{name}_{resource_type}",
+                    )
+                )
+            return collector
+
+        mock_collector_registry.create.side_effect = create_collector
+        mock_parser_registry.parse.return_value = []
+
+        cmd = TopCommand()
+        cmd.forecasting_engine = FakeForecastingEngine()
+        subject = SubjectCtx(
+            kind=ResourceKind.NAMESPACE, name="default", namespace="default"
+        )
+        result = await cmd.execute(subject)
+
+        assert result.exit_code == 0
+        assert captured["secret_inventory_complete"] is False
+        assert "get secrets failed: apiserver timeout" in result.output
+
+    @pytest.mark.asyncio
+    @patch("kubectl_smart.cli.commands.collector_registry")
+    @patch("kubectl_smart.cli.commands.parser_registry")
+    async def test_execute_marks_secret_inventory_incomplete_on_secret_parse_failure(
+        self, mock_parser_registry, mock_collector_registry
+    ):
+        """Test malformed Secret inventory does not become clean TLS evidence."""
+        captured = {}
+
+        class FakeForecastingEngine:
+            def predict_capacity_issues(self, resources, metrics_data):
+                return []
+
+            def predict_certificate_expiry(
+                self,
+                resources,
+                secret_inventory_complete=True,
+            ):
+                captured["secret_inventory_complete"] = secret_inventory_complete
+                return []
+
+        def create_collector(name, **kwargs):
+            resource_type = kwargs.get("resource_type", "generic")
+            collector = MagicMock()
+            collector.name = f"{name}_{resource_type}"
+            collector.collect = AsyncMock(
+                return_value=RawBlob(
+                    data={},
+                    source=f"{name}_{resource_type}",
+                )
+            )
+            return collector
+
+        def parse(blob):
+            if blob.source == "get_secrets":
+                raise ValueError("malformed json")
+            return []
+
+        mock_collector_registry.create.side_effect = create_collector
+        mock_parser_registry.parse.side_effect = parse
+
+        cmd = TopCommand()
+        cmd.forecasting_engine = FakeForecastingEngine()
+        subject = SubjectCtx(
+            kind=ResourceKind.NAMESPACE, name="default", namespace="default"
+        )
+        result = await cmd.execute(subject)
+
+        assert result.exit_code == 0
+        assert captured["secret_inventory_complete"] is False
+        assert "get secrets output could not be parsed: malformed json" in result.output
+
 
 class TestCollectData:
     """Tests for _collect_data method"""

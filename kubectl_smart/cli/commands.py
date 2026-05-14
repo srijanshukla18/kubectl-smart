@@ -1185,9 +1185,11 @@ class TopCommand(BaseCommand):
                 'persistentvolumes',
             ]:
                 try:
-                    extra_collectors.append(
-                        self._create_collector('get', resource_type=resource_type)
+                    collector = self._create_collector(
+                        'get',
+                        resource_type=resource_type,
                     )
+                    extra_collectors.append((resource_type, collector))
                 except Exception as e:
                     logger.info(
                         "Optional collector unavailable",
@@ -1196,19 +1198,35 @@ class TopCommand(BaseCommand):
                     )
                     self._record_collector_creation_gap('get', e, resource_type)
             import asyncio as _asyncio
-            extra_blobs = await _asyncio.gather(*[c.collect(subject) for c in extra_collectors], return_exceptions=True)
-            for i, blob in enumerate(extra_blobs):
+            extra_blobs = await _asyncio.gather(
+                *[collector.collect(subject) for _, collector in extra_collectors],
+                return_exceptions=True,
+            )
+            for (resource_type, collector), blob in zip(extra_collectors, extra_blobs):
+                collector_label = f"get {resource_type}"
                 if isinstance(blob, Exception):
-                    logger.info("Optional collector failed", collector=extra_collectors[i].name, error=str(blob))
-                    self._record_exception_gap(extra_collectors[i].name, blob)
+                    logger.info(
+                        "Optional collector failed",
+                        collector=collector.name,
+                        resource_type=resource_type,
+                        error=str(blob),
+                    )
+                    self._record_exception_gap(collector_label, blob)
                     continue
                 self._record_blob_gap(blob)
                 try:
                     parsed = parser_registry.parse(blob)
                     all_resources.extend(parsed)
                 except Exception as e:
-                    logger.info("Optional parser failed", collector=extra_collectors[i].name, error=str(e))
-                    self._add_data_gap(f"{extra_collectors[i].name} output could not be parsed: {str(e).splitlines()[0]}")
+                    logger.info(
+                        "Optional parser failed",
+                        collector=collector.name,
+                        resource_type=resource_type,
+                        error=str(e),
+                    )
+                    self._add_data_gap(
+                        f"{collector_label} output could not be parsed: {str(e).splitlines()[0]}"
+                    )
             
             # Filter to namespace resources
             namespace_resources = [

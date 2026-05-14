@@ -4,7 +4,7 @@
 
 - Unit test command: `uv run --extra dev pytest`
 - Coverage command: `uv run --extra dev pytest --cov=kubectl_smart --cov-report=term-missing`
-- Latest local result: `492 passed`
+- Latest local result: `494 passed`
 - Latest measured coverage: `86%`
 
 Coverage is measured, not estimated. The default `pytest` command does not enforce
@@ -79,6 +79,9 @@ coverage command above when working on test depth.
   while preserving the exact not-found data gap evidence
 - Top-level predictive outlook qualifies clean no-warning text when only partial
   signals were available
+- Top-level predictive outlook preserves optional collector resource type on
+  collect/parse failures so incomplete Secret inventory still qualifies TLS
+  forecasts
 - Watch-state extraction for warning, critical, and unexpected exit codes,
   diagnosis-detail change detection, and data-gap appearance/resolution
 - Watch mode exits nonzero when the watch loop itself fails
@@ -92,7 +95,7 @@ coverage command above when working on test depth.
 ## Known Coverage Gaps
 
 - `kubectl_smart/watch.py` terminal refresh and some cancellation branches
-- Some command orchestration fallbacks and optional collector paths
+- Some graph/diagnosis command orchestration fallback branches
 - Integration-heavy collector behavior that depends on live Kubernetes API
   availability, metrics-server, kubelet proxy access, and RBAC envelopes
 
